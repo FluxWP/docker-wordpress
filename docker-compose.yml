@@ -2,7 +2,7 @@
 # https://github.com/FluxWP/docker-wordpress
 #
 # Default stack (same as coolify/mariadb-redis). Coolify: add this repository as a resource
-# (Docker Compose build pack, default location /docker-compose.yaml), or paste this file into
+# (Docker Compose build pack, default location /docker-compose.yml), or paste this file into
 # Docker Compose Empty. Plain Docker: use compose/mariadb-redis/ instead.
 # Coolify generates a domain for the 'wordpress' service; put your own there if you like, then Deploy.
 # After the first deploy open your domain and create the admin account on the WordPress

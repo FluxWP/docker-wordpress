@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | `mariadb` | Apache + mod_php | MariaDB 11.8 LTS | yok | Küçük siteler, Coolify'ın hazır şablonuna en yakın olan |
 | `mysql` | Apache + mod_php | MySQL 8.4 LTS | yok | MySQL bekleyen sunucu ve araçlar |
-| `mariadb-redis` (varsayılan) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, üyelik, yoğun yönetim paneli. Repo kökündeki `docker-compose.yaml` de bu (Coolify) |
+| `mariadb-redis` (varsayılan) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, üyelik, yoğun yönetim paneli. Repo kökündeki `docker-compose.yml` de bu (Coolify) |
 | `nginx-fpm` | nginx 1.30 + PHP-FPM | MariaDB 11.8 LTS | Redis 8.8 | GB RAM başına en çok trafik |
 
 Her yığının iki hali var:
@@ -26,7 +26,7 @@ Her yığının iki hali var:
 
 ## Coolify
 
-**Bu repodan (varsayılan yığın):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, build pack **Docker Compose**. Coolify `/docker-compose.yaml` dosyasını (MariaDB + Redis) okur ve alan adını kendisi üretir. Deploy.
+**Bu repodan (varsayılan yığın):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, build pack **Docker Compose**. Coolify `/docker-compose.yml` dosyasını (MariaDB + Redis) okur ve alan adını kendisi üretir. Deploy.
 
 **Başka bir yığın ya da Git'siz:**
 

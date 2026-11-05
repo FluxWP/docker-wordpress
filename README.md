@@ -16,7 +16,7 @@ Production-ready WordPress stacks for **Coolify** and plain **Docker Compose**: 
 |---|---|---|---|---|
 | `mariadb` | Apache + mod_php | MariaDB 11.8 LTS | none | Small sites, closest to the stock Coolify template |
 | `mysql` | Apache + mod_php | MySQL 8.4 LTS | none | Hosts or tools that expect MySQL |
-| `mariadb-redis` (default) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin. Also `docker-compose.yaml` in the repository root (Coolify) |
+| `mariadb-redis` (default) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin. Also `docker-compose.yml` in the repository root (Coolify) |
 | `nginx-fpm` | nginx 1.30 + PHP-FPM | MariaDB 11.8 LTS | Redis 8.8 | Most traffic per GB of RAM |
 
 Every stack comes twice:
@@ -26,7 +26,7 @@ Every stack comes twice:
 
 ## Coolify
 
-**From this repository (default stack):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, build pack **Docker Compose**. Coolify reads `/docker-compose.yaml` (MariaDB + Redis) and generates a domain. Deploy.
+**From this repository (default stack):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, build pack **Docker Compose**. Coolify reads `/docker-compose.yml` (MariaDB + Redis) and generates a domain. Deploy.
 
 **Another stack, or without Git:**
 

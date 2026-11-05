@@ -28,7 +28,7 @@ jobs:
             (cd "$dir" && docker compose config -q) && echo "ok $dir"
             rm "$dir/.env"
           done
-          for f in docker-compose.yaml coolify/*/docker-compose.yml coolify-template/*.yaml; do
+          for f in docker-compose.yml coolify/*/docker-compose.yml coolify-template/*.yaml; do
             python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" && echo "ok $f"
           done
 

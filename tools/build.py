@@ -445,11 +445,11 @@ def coolify_template():
 def outputs():
     files = {"coolify-template/fluxwp-wordpress.yaml": coolify_template()}
     # Default stack in the repository root for Coolify's Git deployments: Coolify reads
-    # /docker-compose.yaml by default, so a repository resource gets a domain with no setup.
-    files["docker-compose.yaml"] = build("coolify", DEFAULT, VARIANTS[DEFAULT]).replace(
+    # /docker-compose.yml by default, so a repository resource gets a domain with no setup.
+    files["docker-compose.yml"] = build("coolify", DEFAULT, VARIANTS[DEFAULT]).replace(
         "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
         "# Default stack (same as coolify/" + DEFAULT + "). Coolify: add this repository as a resource\n"
-        "# (Docker Compose build pack, default location /docker-compose.yaml), or paste this file into\n"
+        "# (Docker Compose build pack, default location /docker-compose.yml), or paste this file into\n"
         "# Docker Compose Empty. Plain Docker: use compose/" + DEFAULT + "/ instead.",
     )
     for name, v in VARIANTS.items():
