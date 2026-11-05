@@ -1,0 +1,40 @@
+---
+title: "FluxWP WordPress"
+description: "Here you can find the documentation for hosting FluxWP WordPress with Coolify."
+category: "CMS"
+icon: "/images/services/fluxwp-wordpress.svg"
+---
+
+![FluxWP WordPress](/images/services/fluxwp-wordpress.svg)
+
+## What is FluxWP WordPress?
+
+FluxWP WordPress is WordPress with production defaults, packaged as one stack:
+
+- WordPress (Apache, PHP 8.4) with tuned PHP and OPcache, 128 MB uploads and hardening
+- MariaDB 11.8 LTS, tuned for small servers
+- Redis object cache, enabled automatically
+- A worker container that runs WP-Cron every minute and can install WordPress on the first deploy, so the install screen is never public
+- Optional install of FluxWP Panel, the FluxWP plugin installer and updater
+
+The images are rebuilt every day, so PHP security fixes arrive on the next deploy.
+
+## Configuration
+
+All variables are optional.
+
+| Variable | Default | Description |
+|---|---|---|
+| `WP_ADMIN_EMAIL` | | Set it to install WordPress automatically. The admin user and password are `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN`. |
+| `WP_TITLE` | `WordPress` | Site title for the automatic install |
+| `WP_LOCALE` | `en_US` | Site language, e.g. `de_DE`, `tr_TR` |
+| `WP_TIMEZONE` | `UTC` | Site timezone |
+| `FLUXWP_SETUP` | `false` | `true` installs FluxWP Panel |
+| `PHP_UPLOAD_MAX_FILESIZE` / `PHP_POST_MAX_SIZE` | `128M` | Upload limits |
+| `PHP_MEMORY_LIMIT` | `256M` | PHP and WordPress memory limit |
+| `REDIS_MAXMEMORY` | `128mb` | Redis cache size |
+
+## Links
+
+- [GitHub](https://github.com/FluxWP/docker-wordpress)
+- [Documentation](https://github.com/FluxWP/docker-wordpress#readme)

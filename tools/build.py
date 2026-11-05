@@ -415,8 +415,27 @@ def env_example(name, v):
     return "\n".join(lines) + "\n"
 
 
+def coolify_template():
+    """Submission file for coollabsio/coolify templates/compose (their conventions:
+    metadata header, no restart, no empty top-level volumes)."""
+    v = VARIANTS["mariadb-redis"]
+    body = build("coolify", "mariadb-redis", v)
+    body = body[body.index("services:"):]
+    body = body.replace("    restart: unless-stopped\n", "")
+    body = body[:body.index("\nvolumes:\n")] + "\n"
+    head = (
+        "# documentation: https://github.com/FluxWP/docker-wordpress\n"
+        "# slogan: FluxWP WordPress: production-tuned WordPress with Redis object cache, WP-Cron worker and automatic install.\n"
+        "# category: cms\n"
+        "# tags: wordpress, cms, blog, woocommerce, mariadb, redis, fluxwp\n"
+        "# logo: svgs/fluxwp-wordpress.svg\n"
+        "# port: 80\n\n"
+    )
+    return head + body
+
+
 def outputs():
-    files = {}
+    files = {"coolify-template/fluxwp-wordpress.yaml": coolify_template()}
     for name, v in VARIANTS.items():
         files[f"coolify/{name}/docker-compose.yml"] = build("coolify", name, v)
         files[f"compose/{name}/docker-compose.yml"] = build("compose", name, v)
