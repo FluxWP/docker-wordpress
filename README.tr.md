@@ -29,9 +29,9 @@ Her yığının iki hali var:
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. `coolify/<yığın>/docker-compose.yml` içeriğini yapıştır, **Save**.
 3. Alan adını `wordpress` servisine gir (`nginx-fpm`'de `nginx` servisine).
-4. Coolify yönetici hesabını sorar: `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`.
-5. **Deploy**. WordPress ilk deploy'da bu hesapla kendiliğinden kurulur, kurulum ekranı internete hiç açık kalmaz.
-6. İsteğe bağlı, **Environment Variables** içinde:
+4. **Deploy** et, alan adını aç ve WordPress kurulum ekranında yönetici hesabını oluştur. Bunu deploy'dan hemen sonra yap: o ana kadar alan adını bulan herkes kurulumu tamamlayabilir.
+5. İsteğe bağlı, **Environment Variables** içinde:
+   - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: WordPress ilk deploy'da bu hesapla kendiliğinden kurulur, kurulum ekranı hiç çıkmaz.
    - `FLUXWP_SETUP=true`: FluxWP Panel'i (flx-setup) kurar ve etkinleştirir.
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limitleri (aşağıda). Değiştirdikten sonra yeniden deploy et.
 
@@ -107,8 +107,8 @@ Hepsi isteğe bağlı. Coolify'da environment variable, Compose'da `.env` içine
 | `DB_BUFFER_POOL_SIZE` | `256M` | Veritabanına ayırdığın RAM'in ~%50'si |
 | `DB_MAX_CONNECTIONS` | `100` | |
 | `REDIS_MAXMEMORY` | `128mb` | Yalnız önbellek, kalıcılık yok, LRU |
-| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Otomatik kurulum (Coolify adresi doldurur, yönetici hesabını sorar) |
-| `WP_AUTO_INSTALL` | `false` | Compose: `WP_ADMIN_EMAIL` olmadan kur (e-posta `admin@<host>`) |
+| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Otomatik kurulum (Coolify adresi doldurur) |
+| `WP_AUTO_INSTALL` | `false` | `WP_ADMIN_EMAIL` olmadan kur (e-posta `admin@<host>`) |
 | `WP_LOCALE` | `en_US` | İlk kurulumda yüklenecek dil, ör. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | İlk kurulumda site saat dilimi |
 | `FLUXWP_SETUP` | `false` | `true` FluxWP Panel'i (flx-setup) kurar |
@@ -124,7 +124,7 @@ Gerisi için: `WORDPRESS_CONFIG_EXTRA` (`wp-config.php`'ye eklenen PHP; içindek
 `worker` servisi `wordpress:cli` çalıştırır ve tekrarlansa da zararsız üç iş yapar:
 
 1. WordPress dosyalarını ve veritabanını bekler.
-2. İlk açılışta: WordPress'i kurar (Coolify'da her zaman, Compose'da `WP_ADMIN_EMAIL` ya da `WP_AUTO_INSTALL=true` varsa), dili, Redis Object Cache eklentisini ve drop-in'ini (Redis yığınları), FluxWP Panel'i (`FLUXWP_SETUP=true`) kurar. Dil ve FluxWP Panel bir kez yapılır; wp-admin'de sonradan değiştirdiğin korunur.
+2. İlk açılışta: WordPress'i kurar (`WP_ADMIN_EMAIL` ya da `WP_AUTO_INSTALL=true` varsa), dili, Redis Object Cache eklentisini ve drop-in'ini (Redis yığınları), FluxWP Panel'i (`FLUXWP_SETUP=true`) kurar. Dil ve FluxWP Panel bir kez yapılır; wp-admin'de sonradan değiştirdiğin korunur.
 3. Zamanı gelen WP-Cron görevlerini `WP_CRON_INTERVAL` saniyede bir çalıştırır.
 
 WP-CLI de orada:

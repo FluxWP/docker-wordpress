@@ -68,11 +68,10 @@ MODES = {
         "db_name": "${DB_NAME:-wordpress}",
         "redis_password": "$SERVICE_PASSWORD_REDIS",
         "wp_url": "$SERVICE_URL_WORDPRESS",
-        # ${VAR:?} = Coolify asks for these before the first deploy.
-        "wp_admin_user": "${WP_ADMIN_USER:?}",
-        "wp_admin_password": "${WP_ADMIN_PASSWORD:?}",
-        "wp_admin_email": "${WP_ADMIN_EMAIL:?}",
-        "wp_auto_install": "true",
+        "wp_admin_user": "${WP_ADMIN_USER:-}",
+        "wp_admin_password": "${WP_ADMIN_PASSWORD:-}",
+        "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
+        "wp_auto_install": "${WP_AUTO_INSTALL:-false}",
     },
     "compose": {
         "db_user": "${DB_USER:-wordpress}",
@@ -128,8 +127,9 @@ def header(mode, name, v):
         lines += [
             "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
             "# Set the domain on the 'wordpress' service" + (" ('nginx' service)" if v["web"] == "nginx" else "") + ", then Deploy.",
-            "# Coolify asks for WP_ADMIN_USER, WP_ADMIN_PASSWORD and WP_ADMIN_EMAIL; WordPress then installs",
-            "# itself on the first deploy with that account, so the install screen is never public.",
+            "# After the first deploy open your domain and create the admin account on the WordPress",
+            "# install screen. Optional: set WP_ADMIN_USER, WP_ADMIN_PASSWORD, WP_ADMIN_EMAIL to install",
+            "# automatically instead.",
             "# FLUXWP_SETUP=true installs the Flux Setup plugin (FluxWP installer + updates).",
         ]
     else:
