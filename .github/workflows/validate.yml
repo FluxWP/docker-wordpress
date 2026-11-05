@@ -18,11 +18,11 @@ jobs:
         run: python3 tools/build.py --check
 
       - name: Worker script syntax
-        run: sh -n scripts/worker.sh
+        run: sh -n scripts/worker.sh && sh -n images/min-php.sh
 
       - name: Compose files are valid
         run: |
-          for dir in compose/*/; do
+          for dir in ./ compose/*/; do
             cp "$dir/.env.example" "$dir/.env"
             sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci/' "$dir/.env"
             (cd "$dir" && docker compose config -q) && echo "ok $dir"
@@ -44,6 +44,15 @@ jobs:
         working-directory: compose/${{ matrix.stack }}
     steps:
       - uses: actions/checkout@v4
+      - name: Build images from this commit
+        working-directory: .
+        run: |
+          python3 tools/build.py --matrix | python3 -c '
+          import json, subprocess, sys
+          for b in json.load(sys.stdin)["include"]:
+              subprocess.run(["docker", "build", "--pull", "-q", "-f", b["dockerfile"], "--build-arg", "BASE=" + b["base"],
+                              "-t", "ghcr.io/fluxwp/wordpress:" + b["tag"], "."], check=True)
+          '
       - name: Start
         run: |
           cp .env.example .env
@@ -59,6 +68,7 @@ jobs:
           curl -fsS -o /dev/null http://localhost:8080/
           curl -fsS -o /dev/null http://localhost:8080/wp-login.php
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/wp-config.php)" = 403
+          docker compose exec -T wordpress php -r 'exit(ini_get("session.upload_progress.enabled") ? 1 : 0);'
       - name: FluxWP Panel and Redis
         run: |
           for i in $(seq 1 24); do

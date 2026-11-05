@@ -4,9 +4,13 @@
     python3 tools/build.py          # write coolify/* and compose/*
     python3 tools/build.py --check  # fail if the committed files are out of date (CI)
 
-coolify/<variant>/docker-compose.yml  single file, config files inlined with Coolify's
-                                      `content:` volumes, Coolify magic variables.
-compose/<variant>/docker-compose.yml  plain Docker Compose, mounts ../../config/*, uses .env.
+coolify/<variant>/docker-compose.yml  single file for Coolify, Coolify magic variables.
+compose/<variant>/docker-compose.yml  plain Docker Compose with .env.
+
+Config files and the worker script are baked into ghcr.io/fluxwp/wordpress images
+(images/*/Dockerfile), so the compose files stay short.
+
+    python3 tools/build.py --matrix  # JSON build matrix for the images workflow
 """
 
 import sys
@@ -14,14 +18,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+REGISTRY = "ghcr.io/fluxwp/wordpress"
+
+# Our images: tag -> (Dockerfile, upstream base). Built by .github/workflows/images.yml.
+BUILDS = {
+    "7.1-php8.4-apache": ("images/wordpress/Dockerfile", "wordpress:7.1-php8.4-apache"),
+    "7.1-php8.4-fpm": ("images/wordpress/Dockerfile", "wordpress:7.1-php8.4-fpm"),
+    "worker-php8.4": ("images/worker/Dockerfile", "wordpress:cli-2.12-php8.4"),
+    "nginx-1.30": ("images/nginx/Dockerfile", "nginx:1.30-alpine"),
+}
+
 IMAGES = {
-    "wordpress-apache": "wordpress:7.1-php8.4-apache",
-    "wordpress-fpm": "wordpress:7.1-php8.4-fpm",
-    "wpcli": "wordpress:cli-2.12-php8.4",
+    "wordpress-apache": f"{REGISTRY}:7.1-php8.4-apache",
+    "wordpress-fpm": f"{REGISTRY}:7.1-php8.4-fpm",
+    "worker": f"{REGISTRY}:worker-php8.4",
+    "nginx": f"{REGISTRY}:nginx-1.30",
     "mariadb": "mariadb:11.8",
     "mysql": "mysql:8.4",
     "redis": "redis:8.8-alpine",
-    "nginx": "nginx:1.30-alpine",
 }
 
 VARIANTS = {
@@ -43,6 +57,8 @@ VARIANTS = {
     },
 }
 
+DEFAULT = "mariadb-redis"
+
 # Per-mode values. Coolify generates SERVICE_* secrets itself.
 MODES = {
     "coolify": {
@@ -52,9 +68,11 @@ MODES = {
         "db_name": "${DB_NAME:-wordpress}",
         "redis_password": "$SERVICE_PASSWORD_REDIS",
         "wp_url": "$SERVICE_URL_WORDPRESS",
-        "wp_admin_user": "$SERVICE_USER_WPADMIN",
-        "wp_admin_password": "$SERVICE_PASSWORD_WPADMIN",
-        "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
+        # ${VAR:?} = Coolify asks for these before the first deploy.
+        "wp_admin_user": "${WP_ADMIN_USER:?}",
+        "wp_admin_password": "${WP_ADMIN_PASSWORD:?}",
+        "wp_admin_email": "${WP_ADMIN_EMAIL:?}",
+        "wp_auto_install": "true",
     },
     "compose": {
         "db_user": "${DB_USER:-wordpress}",
@@ -66,29 +84,9 @@ MODES = {
         "wp_admin_user": "${WP_ADMIN_USER:-admin}",
         "wp_admin_password": "${WP_ADMIN_PASSWORD:-}",
         "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
+        "wp_auto_install": "${WP_AUTO_INSTALL:-false}",
     },
 }
-
-CONFIG_EXTRA_PATH = "/usr/local/etc/flux/wp-config-extra.php"
-
-
-def mount(mode, src, target, indent=6):
-    pad = " " * indent
-    if mode == "compose":
-        return f"{pad}- ../../{src}:{target}:ro\n"
-    body = (ROOT / src).read_text()
-    content = "".join((pad + "      " + line) if line.strip() else "\n" for line in body.splitlines(True))
-    if not content.endswith("\n"):
-        content += "\n"
-    return (
-        f"{pad}- type: bind\n"
-        f"{pad}  source: ./{Path(src).name}\n"
-        f"{pad}  target: {target}\n"
-        f"{pad}  read_only: true\n"
-        f"{pad}  content: |\n"
-        f"{content}"
-    )
-
 
 def env(lines, indent=6):
     pad = " " * indent
@@ -104,7 +102,6 @@ def wp_env(mode, v):
         f"WORDPRESS_DB_PASSWORD={m['db_password']}",
         f"WORDPRESS_DB_NAME={m['db_name']}",
         "WORDPRESS_TABLE_PREFIX=${WORDPRESS_TABLE_PREFIX:-wp_}",
-        f"\"WORDPRESS_CONFIG_EXTRA=if (is_file('{CONFIG_EXTRA_PATH}')) {{ require '{CONFIG_EXTRA_PATH}'; }}\"",
         "PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-256M}",
         "PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE:-128M}",
         "PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE:-128M}",
@@ -112,7 +109,6 @@ def wp_env(mode, v):
         "PHP_OPCACHE_MEMORY=${PHP_OPCACHE_MEMORY:-192}",
         "PHP_TIMEZONE=${PHP_TIMEZONE:-UTC}",
         "WP_ENVIRONMENT_TYPE=${WP_ENVIRONMENT_TYPE:-production}",
-        "WP_CRON_MODE=worker",
     ]
     if v["redis"]:
         lines += [
@@ -120,14 +116,6 @@ def wp_env(mode, v):
             f"WP_REDIS_PASSWORD={m['redis_password']}",
         ]
     return lines
-
-
-def php_mounts(mode, extra=()):
-    out = mount(mode, "config/php/zz-flux.ini", "/usr/local/etc/php/conf.d/zz-flux.ini")
-    for src, target in extra:
-        out += mount(mode, src, target)
-    out += mount(mode, "config/wordpress/wp-config-extra.php", CONFIG_EXTRA_PATH)
-    return out
 
 
 def header(mode, name, v):
@@ -140,15 +128,15 @@ def header(mode, name, v):
         lines += [
             "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
             "# Set the domain on the 'wordpress' service" + (" ('nginx' service)" if v["web"] == "nginx" else "") + ", then Deploy.",
-            "# Optional: set WP_ADMIN_EMAIL to install WordPress automatically (admin user/password",
-            "# are generated by Coolify: SERVICE_USER_WPADMIN / SERVICE_PASSWORD_WPADMIN).",
+            "# Coolify asks for WP_ADMIN_USER, WP_ADMIN_PASSWORD and WP_ADMIN_EMAIL; WordPress then installs",
+            "# itself on the first deploy with that account, so the install screen is never public.",
             "# FLUXWP_SETUP=true installs the Flux Setup plugin (FluxWP installer + updates).",
         ]
     else:
         lines += [
             "# Usage: cp .env.example .env  (set passwords)  &&  docker compose up -d",
         ]
-    lines.append("# Generated by tools/build.py from config/ and scripts/ - edit those, then rebuild.")
+    lines.append("# Generated by tools/build.py - edit that, not this file.")
     return "\n".join(lines) + "\n\n"
 
 
@@ -271,10 +259,6 @@ def wordpress_service(mode, v):
         "    volumes:\n"
         "      - 'wordpress-files:/var/www/html'\n"
     )
-    if apache:
-        out += php_mounts(mode, [("config/apache/zz-flux.conf", "/etc/apache2/conf-enabled/zz-flux.conf")])
-    else:
-        out += php_mounts(mode, [("config/php-fpm/zz-flux.conf", "/usr/local/etc/php-fpm.d/zz-flux.conf")])
     out += "    environment:\n"
     lines = []
     if mode == "coolify" and apache:
@@ -316,7 +300,6 @@ def nginx_service(mode):
         "    restart: unless-stopped\n"
         "    volumes:\n"
         "      - 'wordpress-files:/var/www/html:ro'\n"
-        + mount(mode, "config/nginx/default.conf", "/etc/nginx/conf.d/default.conf")
     )
     if mode == "coolify":
         out += "    environment:\n" + env(["SERVICE_URL_WORDPRESS"])
@@ -341,23 +324,18 @@ def worker_service(mode, v):
     out = (
         "  # One-time setup (auto install, language, Redis, Flux Setup) + WP-Cron every minute.\n"
         "  worker:\n"
-        f"    image: '{IMAGES['wpcli']}'\n"
+        f"    image: '{IMAGES['worker']}'\n"
         "    restart: unless-stopped\n"
-        "    user: '33:33'\n"
-        "    entrypoint: ['/bin/sh', '/usr/local/bin/flx-worker']\n"
         "    volumes:\n"
         "      - 'wordpress-files:/var/www/html'\n"
-        + mount(mode, "scripts/worker.sh", "/usr/local/bin/flx-worker")
-        + php_mounts(mode)
-        + "    environment:\n"
+        "    environment:\n"
         + env(wp_env(mode, v) + [
-            "HOME=/tmp",
-            "WP_CLI_CACHE_DIR=/tmp/wp-cli-cache",
             f"WP_URL={m['wp_url']}",
             "WP_TITLE=${WP_TITLE:-WordPress}",
             f"WP_ADMIN_USER={m['wp_admin_user']}",
             f"WP_ADMIN_PASSWORD={m['wp_admin_password']}",
             f"WP_ADMIN_EMAIL={m['wp_admin_email']}",
+            f"WP_AUTO_INSTALL={m['wp_auto_install']}",
             "WP_LOCALE=${WP_LOCALE:-en_US}",
             "WP_TIMEZONE=${WP_TIMEZONE:-UTC}",
             "WP_CRON_INTERVAL=${WP_CRON_INTERVAL:-60}",
@@ -407,13 +385,15 @@ def env_example(name, v):
         lines += ["", "# Redis object cache", "REDIS_PASSWORD=", "REDIS_MAXMEMORY=128mb"]
     lines += [
         "",
-        "# Automatic install (leave WP_ADMIN_EMAIL empty to use the install screen instead).",
+        "# Automatic install: set WP_ADMIN_EMAIL, or WP_AUTO_INSTALL=true (e-mail admin@<host>).",
+        "# Leave both empty to use the browser install screen.",
         "# Empty WP_ADMIN_PASSWORD = random password, printed once in `docker compose logs worker`.",
         "WP_URL=http://localhost:8080",
         "WP_TITLE=WordPress",
         "WP_ADMIN_USER=admin",
         "WP_ADMIN_PASSWORD=",
         "WP_ADMIN_EMAIL=",
+        "WP_AUTO_INSTALL=false",
         "WP_LOCALE=en_US",
         "WP_TIMEZONE=UTC",
         "",
@@ -443,8 +423,33 @@ def env_example(name, v):
     return "\n".join(lines) + "\n"
 
 
+def coolify_template():
+    """Submission file for coollabsio/coolify templates/compose (their conventions:
+    metadata header, no restart, no empty top-level volumes)."""
+    v = VARIANTS["mariadb-redis"]
+    body = build("coolify", "mariadb-redis", v)
+    body = body[body.index("services:"):]
+    body = body.replace("    restart: unless-stopped\n", "")
+    body = body[:body.index("\nvolumes:\n")] + "\n"
+    head = (
+        "# documentation: https://github.com/FluxWP/docker-wordpress\n"
+        "# slogan: FluxWP WordPress: production-tuned WordPress with Redis object cache, WP-Cron worker and automatic install.\n"
+        "# category: cms\n"
+        "# tags: wordpress, cms, blog, woocommerce, mariadb, redis, fluxwp\n"
+        "# logo: svgs/fluxwp-wordpress.svg\n"
+        "# port: 80\n\n"
+    )
+    return head + body
+
+
 def outputs():
-    files = {}
+    files = {"coolify-template/fluxwp-wordpress.yaml": coolify_template()}
+    # Default stack in the repository root: `docker compose up -d` right after cloning.
+    files["docker-compose.yml"] = build("compose", DEFAULT, VARIANTS[DEFAULT]).replace(
+        "# Usage: cp .env.example .env",
+        "# Default stack (same as compose/" + DEFAULT + "). Usage: cp .env.example .env",
+    )
+    files[".env.example"] = env_example(DEFAULT, VARIANTS[DEFAULT])
     for name, v in VARIANTS.items():
         files[f"coolify/{name}/docker-compose.yml"] = build("coolify", name, v)
         files[f"compose/{name}/docker-compose.yml"] = build("compose", name, v)
@@ -452,7 +457,17 @@ def outputs():
     return files
 
 
+def matrix():
+    import json
+    return json.dumps({"include": [
+        {"tag": tag, "dockerfile": df, "base": base} for tag, (df, base) in BUILDS.items()
+    ]})
+
+
 def main():
+    if "--matrix" in sys.argv:
+        print(matrix())
+        return
     check = "--check" in sys.argv
     stale = []
     for rel, text in outputs().items():
