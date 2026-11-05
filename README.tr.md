@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | `mariadb` | Apache + mod_php | MariaDB 11.8 LTS | yok | Küçük siteler, Coolify'ın hazır şablonuna en yakın olan |
 | `mysql` | Apache + mod_php | MySQL 8.4 LTS | yok | MySQL bekleyen sunucu ve araçlar |
-| `mariadb-redis` | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, üyelik, yoğun yönetim paneli |
+| `mariadb-redis` (varsayılan) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, üyelik, yoğun yönetim paneli. Repo kökündeki `docker-compose.yml` de bu |
 | `nginx-fpm` | nginx 1.30 + PHP-FPM | MariaDB 11.8 LTS | Redis 8.8 | GB RAM başına en çok trafik |
 
 Her yığının iki hali var:
@@ -37,8 +37,19 @@ Her yığının iki hali var:
 
 ## Docker Compose
 
+Varsayılan yığınla (`mariadb-redis`) hızlı başlangıç, repo kökünden:
+
 ```bash
 git clone https://github.com/FluxWP/docker-wordpress.git
+cd docker-wordpress
+cp .env.example .env
+# DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD gir: openssl rand -base64 24
+docker compose up -d
+```
+
+Başka bir yığın:
+
+```bash
 cd docker-wordpress/compose/mariadb        # ya da mysql, mariadb-redis, nginx-fpm
 cp .env.example .env
 # DB_PASSWORD, DB_ROOT_PASSWORD (ve REDIS_PASSWORD) gir: openssl rand -base64 24

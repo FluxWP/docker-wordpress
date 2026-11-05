@@ -57,6 +57,8 @@ VARIANTS = {
     },
 }
 
+DEFAULT = "mariadb-redis"
+
 # Per-mode values. Coolify generates SERVICE_* secrets itself.
 MODES = {
     "coolify": {
@@ -436,6 +438,12 @@ def coolify_template():
 
 def outputs():
     files = {"coolify-template/fluxwp-wordpress.yaml": coolify_template()}
+    # Default stack in the repository root: `docker compose up -d` right after cloning.
+    files["docker-compose.yml"] = build("compose", DEFAULT, VARIANTS[DEFAULT]).replace(
+        "# Usage: cp .env.example .env",
+        "# Default stack (same as compose/" + DEFAULT + "). Usage: cp .env.example .env",
+    )
+    files[".env.example"] = env_example(DEFAULT, VARIANTS[DEFAULT])
     for name, v in VARIANTS.items():
         files[f"coolify/{name}/docker-compose.yml"] = build("coolify", name, v)
         files[f"compose/{name}/docker-compose.yml"] = build("compose", name, v)

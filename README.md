@@ -16,7 +16,7 @@ Production-ready WordPress stacks for **Coolify** and plain **Docker Compose**: 
 |---|---|---|---|---|
 | `mariadb` | Apache + mod_php | MariaDB 11.8 LTS | none | Small sites, closest to the stock Coolify template |
 | `mysql` | Apache + mod_php | MySQL 8.4 LTS | none | Hosts or tools that expect MySQL |
-| `mariadb-redis` | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin |
+| `mariadb-redis` (default) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin. Also `docker-compose.yml` in the repository root |
 | `nginx-fpm` | nginx 1.30 + PHP-FPM | MariaDB 11.8 LTS | Redis 8.8 | Most traffic per GB of RAM |
 
 Every stack comes twice:
@@ -37,8 +37,19 @@ Every stack comes twice:
 
 ## Docker Compose
 
+Quick start with the default stack (`mariadb-redis`), from the repository root:
+
 ```bash
 git clone https://github.com/FluxWP/docker-wordpress.git
+cd docker-wordpress
+cp .env.example .env
+# set DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD: openssl rand -base64 24
+docker compose up -d
+```
+
+Another stack:
+
+```bash
 cd docker-wordpress/compose/mariadb        # or mysql, mariadb-redis, nginx-fpm
 cp .env.example .env
 # set DB_PASSWORD, DB_ROOT_PASSWORD (and REDIS_PASSWORD): openssl rand -base64 24
