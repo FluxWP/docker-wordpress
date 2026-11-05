@@ -16,7 +16,7 @@ Production-ready WordPress stacks for **Coolify** and plain **Docker Compose**: 
 |---|---|---|---|---|
 | `mariadb` | Apache + mod_php | MariaDB 11.8 LTS | none | Small sites, closest to the stock Coolify template |
 | `mysql` | Apache + mod_php | MySQL 8.4 LTS | none | Hosts or tools that expect MySQL |
-| `mariadb-redis` (default) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin. Also `docker-compose.yml` in the repository root |
+| `mariadb-redis` (default) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin. Also `docker-compose.yaml` in the repository root (Coolify) |
 | `nginx-fpm` | nginx 1.30 + PHP-FPM | MariaDB 11.8 LTS | Redis 8.8 | Most traffic per GB of RAM |
 
 Every stack comes twice:
@@ -26,9 +26,13 @@ Every stack comes twice:
 
 ## Coolify
 
+**From this repository (default stack):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, build pack **Docker Compose**. Coolify reads `/docker-compose.yaml` (MariaDB + Redis) and generates a domain. Deploy.
+
+**Another stack, or without Git:**
+
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. Paste `coolify/<stack>/docker-compose.yml` and **Save**.
-3. Set your domain on the `wordpress` service (`nginx` service for `nginx-fpm`).
+3. Coolify generates a domain for the `wordpress` service (`nginx` for `nginx-fpm`); put your own there if you like.
 4. **Deploy**, open your domain and create the admin account on the WordPress install screen. Do it right after the deploy: until then anyone who finds the domain could finish the install.
 5. Optional, in **Environment Variables**:
    - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: WordPress installs itself with this account on the first deploy and the install screen never shows.
@@ -37,11 +41,11 @@ Every stack comes twice:
 
 ## Docker Compose
 
-Quick start with the default stack (`mariadb-redis`), from the repository root:
+Quick start with the default stack (`mariadb-redis`):
 
 ```bash
 git clone https://github.com/FluxWP/docker-wordpress.git
-cd docker-wordpress
+cd docker-wordpress/compose/mariadb-redis
 cp .env.example .env
 # set DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD: openssl rand -base64 24
 docker compose up -d

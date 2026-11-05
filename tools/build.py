@@ -126,7 +126,7 @@ def header(mode, name, v):
     if mode == "coolify":
         lines += [
             "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
-            "# Set the domain on the 'wordpress' service" + (" ('nginx' service)" if v["web"] == "nginx" else "") + ", then Deploy.",
+            "# Coolify generates a domain for the '" + ("nginx" if v["web"] == "nginx" else "wordpress") + "' service; put your own there if you like, then Deploy.",
             "# After the first deploy open your domain and create the admin account on the WordPress",
             "# install screen. Optional: set WP_ADMIN_USER, WP_ADMIN_PASSWORD, WP_ADMIN_EMAIL to install",
             "# automatically instead.",
@@ -302,7 +302,7 @@ def nginx_service(mode):
         "      - 'wordpress-files:/var/www/html:ro'\n"
     )
     if mode == "coolify":
-        out += "    environment:\n" + env(["SERVICE_URL_WORDPRESS"])
+        out += "    environment:\n" + env(["SERVICE_URL_NGINX"])
     else:
         out += "    ports:\n      - '${HTTP_PORT:-8080}:80'\n"
     out += (
@@ -330,7 +330,7 @@ def worker_service(mode, v):
         "      - 'wordpress-files:/var/www/html'\n"
         "    environment:\n"
         + env(wp_env(mode, v) + [
-            f"WP_URL={m['wp_url']}",
+            f"WP_URL={m['wp_url'].replace('WORDPRESS', 'NGINX') if v['web'] == 'nginx' else m['wp_url']}",
             "WP_TITLE=${WP_TITLE:-WordPress}",
             f"WP_ADMIN_USER={m['wp_admin_user']}",
             f"WP_ADMIN_PASSWORD={m['wp_admin_password']}",
@@ -444,12 +444,14 @@ def coolify_template():
 
 def outputs():
     files = {"coolify-template/fluxwp-wordpress.yaml": coolify_template()}
-    # Default stack in the repository root: `docker compose up -d` right after cloning.
-    files["docker-compose.yml"] = build("compose", DEFAULT, VARIANTS[DEFAULT]).replace(
-        "# Usage: cp .env.example .env",
-        "# Default stack (same as compose/" + DEFAULT + "). Usage: cp .env.example .env",
+    # Default stack in the repository root for Coolify's Git deployments: Coolify reads
+    # /docker-compose.yaml by default, so a repository resource gets a domain with no setup.
+    files["docker-compose.yaml"] = build("coolify", DEFAULT, VARIANTS[DEFAULT]).replace(
+        "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
+        "# Default stack (same as coolify/" + DEFAULT + "). Coolify: add this repository as a resource\n"
+        "# (Docker Compose build pack, default location /docker-compose.yaml), or paste this file into\n"
+        "# Docker Compose Empty. Plain Docker: use compose/" + DEFAULT + "/ instead.",
     )
-    files[".env.example"] = env_example(DEFAULT, VARIANTS[DEFAULT])
     for name, v in VARIANTS.items():
         files[f"coolify/{name}/docker-compose.yml"] = build("coolify", name, v)
         files[f"compose/{name}/docker-compose.yml"] = build("compose", name, v)

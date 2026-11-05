@@ -2,7 +2,7 @@
 # https://github.com/FluxWP/docker-wordpress
 #
 # Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.
-# Set the domain on the 'wordpress' service, then Deploy.
+# Coolify generates a domain for the 'wordpress' service; put your own there if you like, then Deploy.
 # After the first deploy open your domain and create the admin account on the WordPress
 # install screen. Optional: set WP_ADMIN_USER, WP_ADMIN_PASSWORD, WP_ADMIN_EMAIL to install
 # automatically instead.
