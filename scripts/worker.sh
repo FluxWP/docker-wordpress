@@ -62,8 +62,8 @@ install_core() {
 	fi
 	if [ -z "${WP_URL:-}" ] || [ -z "${WP_ADMIN_EMAIL:-}" ]; then
 		if [ -z "${FLX_WARNED:-}" ]; then
-			log "WordPress is not installed yet. Finish the install screen in the browser,"
-			log "or set WP_URL + WP_ADMIN_EMAIL (+ WP_ADMIN_USER, WP_ADMIN_PASSWORD) to install automatically."
+			log "WordPress is not installed yet: open ${WP_URL:-your site} and finish the install screen,"
+			log "or set WP_ADMIN_EMAIL (+ WP_ADMIN_USER, WP_ADMIN_PASSWORD) to install automatically."
 			FLX_WARNED=1
 		fi
 		return 1
