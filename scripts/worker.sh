@@ -78,7 +78,7 @@ install_core() {
 	fi
 	wp core install "$@" || return 1
 	log "WordPress installed: $WP_URL/wp-admin  user: ${WP_ADMIN_USER:-admin}  admin e-mail: $WP_ADMIN_EMAIL"
-	[ -n "${WP_ADMIN_PASSWORD:-}" ] && log "password: the WP_ADMIN_PASSWORD variable (Coolify: SERVICE_PASSWORD_WPADMIN)"
+	[ -n "${WP_ADMIN_PASSWORD:-}" ] && log "password: the WP_ADMIN_PASSWORD variable"
 	wp rewrite structure '/%postname%/' --hard >/dev/null 2>&1 || true
 }
 
