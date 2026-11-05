@@ -29,9 +29,9 @@ Her yığının iki hali var:
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. `coolify/<yığın>/docker-compose.yml` içeriğini yapıştır, **Save**.
 3. Alan adını `wordpress` servisine gir (`nginx-fpm`'de `nginx` servisine).
-4. **Deploy**. WordPress ilk deploy'da kendiliğinden kurulur; kurulum ekranı çıkmaz ve internete açık bir şey kalmaz. Giriş bilgileri **Environment Variables** sekmesinde: `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN`.
-5. İsteğe bağlı, **Environment Variables** içinde:
-   - `WP_ADMIN_EMAIL`: yönetici e-postan (varsayılan `admin@<alan adın>`). `WP_AUTO_INSTALL=false` yaparsan tarayıcıdaki kurulum ekranı geri gelir.
+4. Coolify yönetici hesabını sorar: `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`.
+5. **Deploy**. WordPress ilk deploy'da bu hesapla kendiliğinden kurulur, kurulum ekranı internete hiç açık kalmaz.
+6. İsteğe bağlı, **Environment Variables** içinde:
    - `FLUXWP_SETUP=true`: FluxWP Panel'i (flx-setup) kurar ve etkinleştirir.
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limitleri (aşağıda). Değiştirdikten sonra yeniden deploy et.
 
@@ -107,8 +107,8 @@ Hepsi isteğe bağlı. Coolify'da environment variable, Compose'da `.env` içine
 | `DB_BUFFER_POOL_SIZE` | `256M` | Veritabanına ayırdığın RAM'in ~%50'si |
 | `DB_MAX_CONNECTIONS` | `100` | |
 | `REDIS_MAXMEMORY` | `128mb` | Yalnız önbellek, kalıcılık yok, LRU |
-| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Otomatik kurulum (Coolify adres, kullanıcı ve şifreyi kendisi doldurur) |
-| `WP_AUTO_INSTALL` | Coolify `true`, Compose `false` | `WP_ADMIN_EMAIL` olmadan kur (e-posta `admin@<host>`) |
+| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Otomatik kurulum (Coolify adresi doldurur, yönetici hesabını sorar) |
+| `WP_AUTO_INSTALL` | `false` | Compose: `WP_ADMIN_EMAIL` olmadan kur (e-posta `admin@<host>`) |
 | `WP_LOCALE` | `en_US` | İlk kurulumda yüklenecek dil, ör. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | İlk kurulumda site saat dilimi |
 | `FLUXWP_SETUP` | `false` | `true` FluxWP Panel'i (flx-setup) kurar |

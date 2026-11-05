@@ -21,12 +21,11 @@ The images are rebuilt every day, so PHP security fixes arrive on the next deplo
 
 ## Configuration
 
-All variables are optional.
+The admin account is required, everything else is optional.
 
 | Variable | Default | Description |
 |---|---|---|
-| `WP_ADMIN_EMAIL` | `admin@<domain>` | Admin e-mail. WordPress installs itself on the first deploy; log in with `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN`. |
-| `WP_AUTO_INSTALL` | `true` | `false` shows the browser install screen instead |
+| `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | required | Admin account. WordPress installs itself with it on the first deploy. |
 | `WP_TITLE` | `WordPress` | Site title for the automatic install |
 | `WP_LOCALE` | `en_US` | Site language, e.g. `de_DE`, `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | Site timezone |

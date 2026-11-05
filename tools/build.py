@@ -68,10 +68,11 @@ MODES = {
         "db_name": "${DB_NAME:-wordpress}",
         "redis_password": "$SERVICE_PASSWORD_REDIS",
         "wp_url": "$SERVICE_URL_WORDPRESS",
-        "wp_admin_user": "$SERVICE_USER_WPADMIN",
-        "wp_admin_password": "$SERVICE_PASSWORD_WPADMIN",
-        "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
-        "wp_auto_install": "${WP_AUTO_INSTALL:-true}",
+        # ${VAR:?} = Coolify asks for these before the first deploy.
+        "wp_admin_user": "${WP_ADMIN_USER:?}",
+        "wp_admin_password": "${WP_ADMIN_PASSWORD:?}",
+        "wp_admin_email": "${WP_ADMIN_EMAIL:?}",
+        "wp_auto_install": "true",
     },
     "compose": {
         "db_user": "${DB_USER:-wordpress}",
@@ -127,9 +128,8 @@ def header(mode, name, v):
         lines += [
             "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
             "# Set the domain on the 'wordpress' service" + (" ('nginx' service)" if v["web"] == "nginx" else "") + ", then Deploy.",
-            "# WordPress installs itself on the first deploy, no setup screen. Login: SERVICE_USER_WPADMIN /",
-            "# SERVICE_PASSWORD_WPADMIN (Environment Variables). Set WP_ADMIN_EMAIL for your own e-mail,",
-            "# WP_AUTO_INSTALL=false to use the browser install screen instead.",
+            "# Coolify asks for WP_ADMIN_USER, WP_ADMIN_PASSWORD and WP_ADMIN_EMAIL; WordPress then installs",
+            "# itself on the first deploy with that account, so the install screen is never public.",
             "# FLUXWP_SETUP=true installs the Flux Setup plugin (FluxWP installer + updates).",
         ]
     else:

@@ -29,9 +29,9 @@ Every stack comes twice:
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. Paste `coolify/<stack>/docker-compose.yml` and **Save**.
 3. Set your domain on the `wordpress` service (`nginx` service for `nginx-fpm`).
-4. **Deploy**. WordPress installs itself on the first deploy, so there is no install screen and nothing is left open to the internet. To log in, use `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN` from the **Environment Variables** tab.
-5. Optional, in **Environment Variables**:
-   - `WP_ADMIN_EMAIL`: your admin e-mail (default `admin@<your domain>`). `WP_AUTO_INSTALL=false` brings back the browser install screen.
+4. Coolify asks for the admin account: `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`.
+5. **Deploy**. WordPress installs itself with that account on the first deploy, so the install screen is never open to the internet.
+6. Optional, in **Environment Variables**:
    - `FLUXWP_SETUP=true`: installs and activates FluxWP Panel (flx-setup).
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limits (see below). Redeploy after changing them.
 
@@ -107,8 +107,8 @@ All optional. In Coolify they are environment variables, with Compose they go in
 | `DB_BUFFER_POOL_SIZE` | `256M` | ~50% of the RAM you give the database |
 | `DB_MAX_CONNECTIONS` | `100` | |
 | `REDIS_MAXMEMORY` | `128mb` | Cache only, no persistence, LRU eviction |
-| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Automatic install (Coolify fills URL, user and password) |
-| `WP_AUTO_INSTALL` | Coolify `true`, Compose `false` | Install without `WP_ADMIN_EMAIL` (e-mail `admin@<host>`) |
+| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Automatic install (Coolify fills the URL and asks for the admin account) |
+| `WP_AUTO_INSTALL` | `false` | Compose: install without `WP_ADMIN_EMAIL` (e-mail `admin@<host>`) |
 | `WP_LOCALE` | `en_US` | Language installed on first setup, e.g. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | Site timezone on first setup |
 | `FLUXWP_SETUP` | `false` | `true` installs FluxWP Panel (flx-setup) |
