@@ -14,7 +14,7 @@ FluxWP WordPress is WordPress with production defaults, packaged as one stack:
 - WordPress (Apache, PHP 8.4) with tuned PHP and OPcache, 128 MB uploads and hardening
 - MariaDB 11.8 LTS, tuned for small servers
 - Redis object cache, enabled automatically
-- A worker container that runs WP-Cron every minute and can install WordPress on the first deploy, so the install screen is never public
+- A worker container that installs WordPress on the first deploy (no public install screen) and runs WP-Cron every minute
 - Optional install of FluxWP Panel, the FluxWP plugin installer and updater
 
 The images are rebuilt every day, so PHP security fixes arrive on the next deploy.
@@ -25,7 +25,8 @@ All variables are optional.
 
 | Variable | Default | Description |
 |---|---|---|
-| `WP_ADMIN_EMAIL` | | Set it to install WordPress automatically. The admin user and password are `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN`. |
+| `WP_ADMIN_EMAIL` | `admin@<domain>` | Admin e-mail. WordPress installs itself on the first deploy; log in with `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN`. |
+| `WP_AUTO_INSTALL` | `true` | `false` shows the browser install screen instead |
 | `WP_TITLE` | `WordPress` | Site title for the automatic install |
 | `WP_LOCALE` | `en_US` | Site language, e.g. `de_DE`, `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | Site timezone |

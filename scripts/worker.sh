@@ -3,7 +3,8 @@
 #
 # 1. Waits for the WordPress files and the database.
 # 2. One-time bootstrap (idempotent, safe on every restart):
-#      - installs WordPress when WP_URL + WP_ADMIN_EMAIL are set (no open install screen),
+#      - installs WordPress when WP_URL + WP_ADMIN_EMAIL (or WP_AUTO_INSTALL=true) are set,
+#        so the install screen is never public,
 #      - installs the site language (WP_LOCALE),
 #      - enables the Redis object cache when WP_REDIS_HOST is set,
 #      - installs Flux Setup when FLUXWP_SETUP=true.
@@ -53,6 +54,12 @@ install_core() {
 	if wp core is-installed >/dev/null 2>&1; then
 		return 0
 	fi
+	# WP_AUTO_INSTALL=true (default on Coolify): install without any input,
+	# admin e-mail falls back to admin@<site host>.
+	if [ -z "${WP_ADMIN_EMAIL:-}" ] && [ -n "${WP_URL:-}" ] && truthy "${WP_AUTO_INSTALL:-false}"; then
+		host="$(echo "$WP_URL" | sed -E 's#^[a-zA-Z]+://##; s#[/:].*$##')"
+		WP_ADMIN_EMAIL="admin@${host:-example.com}"
+	fi
 	if [ -z "${WP_URL:-}" ] || [ -z "${WP_ADMIN_EMAIL:-}" ]; then
 		if [ -z "${FLX_WARNED:-}" ]; then
 			log "WordPress is not installed yet. Finish the install screen in the browser,"
@@ -70,6 +77,8 @@ install_core() {
 		log "WP_ADMIN_PASSWORD is empty: a random password is printed below, save it."
 	fi
 	wp core install "$@" || return 1
+	log "WordPress installed: $WP_URL/wp-admin  user: ${WP_ADMIN_USER:-admin}  admin e-mail: $WP_ADMIN_EMAIL"
+	[ -n "${WP_ADMIN_PASSWORD:-}" ] && log "password: the WP_ADMIN_PASSWORD variable (Coolify: SERVICE_PASSWORD_WPADMIN)"
 	wp rewrite structure '/%postname%/' --hard >/dev/null 2>&1 || true
 }
 

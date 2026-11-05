@@ -29,11 +29,11 @@ Every stack comes twice:
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. Paste `coolify/<stack>/docker-compose.yml` and **Save**.
 3. Set your domain on the `wordpress` service (`nginx` service for `nginx-fpm`).
-4. Optional, in **Environment Variables**:
-   - `WP_ADMIN_EMAIL`: installs WordPress on the first deploy, so the install screen is never open to the internet. The admin user and password are Coolify's `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN`.
+4. **Deploy**. WordPress installs itself on the first deploy, so there is no install screen and nothing is left open to the internet. To log in, use `SERVICE_USER_WPADMIN` / `SERVICE_PASSWORD_WPADMIN` from the **Environment Variables** tab.
+5. Optional, in **Environment Variables**:
+   - `WP_ADMIN_EMAIL`: your admin e-mail (default `admin@<your domain>`). `WP_AUTO_INSTALL=false` brings back the browser install screen.
    - `FLUXWP_SETUP=true`: installs and activates FluxWP Panel (flx-setup).
-   - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limits (see below).
-5. **Deploy**.
+   - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limits (see below). Redeploy after changing them.
 
 ## Docker Compose
 
@@ -108,6 +108,7 @@ All optional. In Coolify they are environment variables, with Compose they go in
 | `DB_MAX_CONNECTIONS` | `100` | |
 | `REDIS_MAXMEMORY` | `128mb` | Cache only, no persistence, LRU eviction |
 | `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Automatic install (Coolify fills URL, user and password) |
+| `WP_AUTO_INSTALL` | Coolify `true`, Compose `false` | Install without `WP_ADMIN_EMAIL` (e-mail `admin@<host>`) |
 | `WP_LOCALE` | `en_US` | Language installed on first setup, e.g. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | Site timezone on first setup |
 | `FLUXWP_SETUP` | `false` | `true` installs FluxWP Panel (flx-setup) |
@@ -123,7 +124,7 @@ Anything else: `WORDPRESS_CONFIG_EXTRA` (PHP appended to `wp-config.php`; keep t
 `worker` runs `wordpress:cli` and does three things, all safe to repeat:
 
 1. Waits for the WordPress files and the database.
-2. On first start: installs WordPress (when `WP_ADMIN_EMAIL` is set), the language, the Redis Object Cache plugin and its drop-in (Redis stacks), and FluxWP Panel (`FLUXWP_SETUP=true`). Language and FluxWP Panel are done once, so later changes in wp-admin stay.
+2. On first start: installs WordPress (Coolify always, Compose when `WP_ADMIN_EMAIL` or `WP_AUTO_INSTALL=true` is set), the language, the Redis Object Cache plugin and its drop-in (Redis stacks), and FluxWP Panel (`FLUXWP_SETUP=true`). Language and FluxWP Panel are done once, so later changes in wp-admin stay.
 3. Runs due WP-Cron events every `WP_CRON_INTERVAL` seconds.
 
 WP-CLI is available there too:
