@@ -1,0 +1,74 @@
+name: Validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generated files are up to date
+        run: python3 tools/build.py --check
+
+      - name: Worker script syntax
+        run: sh -n scripts/worker.sh
+
+      - name: Compose files are valid
+        run: |
+          for dir in compose/*/; do
+            cp "$dir/.env.example" "$dir/.env"
+            sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci/' "$dir/.env"
+            (cd "$dir" && docker compose config -q) && echo "ok $dir"
+            rm "$dir/.env"
+          done
+          for f in coolify/*/docker-compose.yml; do
+            python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" && echo "ok $f"
+          done
+
+  smoke:
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [mariadb, mysql, mariadb-redis, nginx-fpm]
+    defaults:
+      run:
+        working-directory: compose/${{ matrix.stack }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start
+        run: |
+          cp .env.example .env
+          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-db/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci-root/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci-redis/;s/^WP_ADMIN_EMAIL=$/WP_ADMIN_EMAIL=ci@example.com/;s/^WP_ADMIN_PASSWORD=$/WP_ADMIN_PASSWORD=ci-admin/;s/^FLUXWP_SETUP=false$/FLUXWP_SETUP=true/' .env
+          docker compose up -d --wait --wait-timeout 300
+      - name: Installed and serving
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T worker wp core is-installed && break
+            sleep 5
+          done
+          docker compose exec -T worker wp core is-installed
+          curl -fsS -o /dev/null http://localhost:8080/
+          curl -fsS -o /dev/null http://localhost:8080/wp-login.php
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/wp-config.php)" = 403
+      - name: FluxWP Panel and Redis
+        run: |
+          for i in $(seq 1 24); do
+            docker compose exec -T worker wp plugin is-active flx-setup && break
+            sleep 5
+          done
+          docker compose exec -T worker wp plugin is-active flx-setup
+          if grep -q '^REDIS_PASSWORD' .env; then
+            docker compose exec -T worker wp redis status | grep -qi 'Connected'
+          fi
+      - name: Logs
+        if: always()
+        run: docker compose logs --tail 100

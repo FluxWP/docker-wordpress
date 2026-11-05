@@ -1,0 +1,5 @@
+.env
+*.sql
+*.tgz
+.DS_Store
+__pycache__/
