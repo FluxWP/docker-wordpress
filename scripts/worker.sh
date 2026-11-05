@@ -9,7 +9,7 @@
 #      - installs Flux Setup when FLUXWP_SETUP=true.
 # 3. Runs due WP-Cron events every WP_CRON_INTERVAL seconds (default 60).
 #
-# Mounted as /usr/local/bin/flx-worker; runs in the wordpress:cli image as www-data (33).
+# Installed in the image as /usr/local/bin/flx-worker; runs in the wordpress:cli image as www-data (33).
 
 set -u
 

@@ -21,7 +21,7 @@
 
 Her yığının iki hali var:
 
-- `coolify/<yığın>/docker-compose.yml`: Coolify'a yapıştırılan tek dosya. Ayar dosyaları içine gömülü, şifreleri Coolify üretir.
+- `coolify/<yığın>/docker-compose.yml`: Coolify'a yapıştırılan kısa, tek dosya. Şifreleri Coolify üretir.
 - `compose/<yığın>/`: `.env.example` ile düz Docker Compose. Docker olan her sunucuda çalışır.
 
 ## Coolify
@@ -34,8 +34,6 @@ Her yığının iki hali var:
    - `FLUXWP_SETUP=true`: FluxWP Panel'i (flx-setup) kurar ve etkinleştirir.
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limitleri (aşağıda).
 5. **Deploy**.
-
-Ayar dosyaları servisin **Storages** sekmesinde görünür, oradan düzenlenebilir.
 
 ## Docker Compose
 
@@ -51,6 +49,21 @@ Site `http://localhost:8080` adresinde açılır (`HTTP_PORT`). Canlıda önüne
 
 Kendiliğinden kurulum için `WP_URL` + `WP_ADMIN_EMAIL` gir. `WP_ADMIN_PASSWORD` boşsa rastgele şifre bir kez `docker compose logs worker` çıktısına yazılır.
 
+## İmajlar
+
+Ayarlar imajlarımızın içinde, compose dosyalarında yalnız servisler ve env değişkenleri var:
+
+| İmaj | Tabanı | Ekledikleri |
+|---|---|---|
+| `ghcr.io/fluxwp/wordpress:7.1-php8.4-apache` | `wordpress:7.1-php8.4-apache` | PHP/OPcache ayarları, Apache sıkılaştırma ve gerçek IP, `wp-config-extra.php` |
+| `ghcr.io/fluxwp/wordpress:7.1-php8.4-fpm` | `wordpress:7.1-php8.4-fpm` | Aynısı + PHP-FPM havuzu |
+| `ghcr.io/fluxwp/wordpress:worker-php8.4` | `wordpress:cli-2.12-php8.4` | Worker script'i |
+| `ghcr.io/fluxwp/wordpress:nginx-1.30` | `nginx:1.30-alpine` | WordPress için nginx ayarı |
+
+amd64 ve arm64 için üretilir, her gün yeniden build edilir; PHP ve işletim sistemi güvenlik yamaları bir sonraki pull'da gelir. Sabitlemek istersen her build'in tarihli etiketi de var (`7.1-php8.4-apache-20261105`). Bilinen kritik açığı olan PHP sürümünde build başarısız olur.
+
+Kendi imajını build etmeden bir dosyayı değiştirmek için kendi dosyanı üstüne mount et, ör. `./benim.ini:/usr/local/etc/php/conf.d/zz-flux.ini:ro`.
+
 ## Coolify'ın hazır şablonuna göre farklar
 
 | Hazır şablon | Burada |
@@ -63,6 +76,7 @@ Kendiliğinden kurulum için `WP_URL` + `WP_ADMIN_EMAIL` gir. `WP_ADMIN_PASSWORD
 | Sayfa açılışında WP-Cron | `DISABLE_WP_CRON` + worker 60 sn'de bir zamanı gelen görevleri çalıştırır; trafiksiz sitede de cron işler |
 | Deploy sonrası kurulum ekranı açık | İsteğe bağlı otomatik kurulum, yönetici bilgileri üretilir |
 | MariaDB varsayılanları | utf8mb4, 256 MB buffer pool, `skip-name-resolve`, performance schema kapalı (~100-400 MB RAM tasarrufu), `MARIADB_AUTO_UPGRADE` |
+| - | PHP 8.4.27+ (PHP2Shell, CVE-2026-109618/109619 yamalı) ve `session.upload_progress` kapalı (doğrulanmış sömürü yolu) |
 | - | `DISALLOW_FILE_EDIT`, `no-new-privileges`, DB/Redis portları dışa kapalı, sunucu sürümü gizli, `wp-config.php`/`readme.html`/uploads içinde PHP engelli, proxy arkasında gerçek IP |
 
 ## Ayarlar
@@ -91,7 +105,7 @@ Hepsi isteğe bağlı. Coolify'da environment variable, Compose'da `.env` içine
 | `WP_ENVIRONMENT_TYPE` | `production` | |
 | `WORDPRESS_TABLE_PREFIX` | `wp_` | Yalnız ilk kurulumdan önce |
 
-Gerisi `config/wordpress/wp-config-extra.php` (`wp-config.php` içinden yüklenir) ya da `config/` altındaki diğer dosyalarda.
+Gerisi için: `WORDPRESS_CONFIG_EXTRA` (`wp-config.php`'ye eklenen PHP; içindeki varsayılan `require` satırını koru) ya da `config/` içindeki bir dosyanın mount edilmiş kopyası.
 
 ## Worker
 
@@ -127,19 +141,21 @@ Coolify veritabanı servisini zamanlanmış olarak da yedekleyebilir.
 ## Güncellemeler
 
 - **WordPress çekirdeği, eklentiler, temalar**: her zamanki gibi wp-admin'den (küçük çekirdek güncellemeleri otomatik). İmaj etiketi yalnız PHP sürümünü ve ilk kurulumun dosyalarını belirler.
-- **PHP / imajlar**: etiketi değiştir (`wordpress:7.1-php8.4-apache` → `...-php8.5-apache`) ve yeniden deploy et.
+- **İmajlar**: yeniden deploy et (Coolify) ya da `docker compose pull && docker compose up -d`, son günlük build gelir. Yeni PHP/WordPress dalları bu reponun yeni sürümünde yeni etiket olarak gelir.
 - **MariaDB**: yeni etikete geçince `MARIADB_AUTO_UPGRADE=1` yükseltme adımını çalıştırır. Önce yedek al.
 
 ## Geliştirme
 
-Compose dosyaları `config/`, `scripts/` ve `tools/build.py`'den üretilir:
+- `config/`, `scripts/`: imajlara giren dosyalar (`images/*/Dockerfile`).
+- `tools/build.py`: imaj etiketleri ve compose üretici.
 
 ```bash
 python3 tools/build.py          # coolify/* ve compose/* yeniden üret
 python3 tools/build.py --check  # CI'ın çalıştırdığı
+docker build -f images/wordpress/Dockerfile --build-arg BASE=wordpress:7.1-php8.4-apache -t ghcr.io/fluxwp/wordpress:7.1-php8.4-apache .
 ```
 
-Kaynak dosyaları düzenle, üretilenleri değil.
+Kaynakları düzenle, üretilen compose dosyalarını değil. CI PR'daki imajları build edip her yığını çalıştırır.
 
 ## Bakımcılar
 
