@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | `mariadb` | Apache + mod_php | MariaDB 11.8 LTS | yok | Küçük siteler, Coolify'ın hazır şablonuna en yakın olan |
 | `mysql` | Apache + mod_php | MySQL 8.4 LTS | yok | MySQL bekleyen sunucu ve araçlar |
-| `mariadb-redis` (varsayılan) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, üyelik, yoğun yönetim paneli. Repo kökündeki `docker-compose.yml` de bu |
+| `mariadb-redis` (varsayılan) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, üyelik, yoğun yönetim paneli. Repo kökündeki `docker-compose.yml` de bu (Coolify) |
 | `nginx-fpm` | nginx 1.30 + PHP-FPM | MariaDB 11.8 LTS | Redis 8.8 | GB RAM başına en çok trafik |
 
 Her yığının iki hali var:
@@ -26,9 +26,13 @@ Her yığının iki hali var:
 
 ## Coolify
 
+**Bu repodan (varsayılan yığın):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, build pack **Docker Compose**. Coolify `/docker-compose.yml` dosyasını (MariaDB + Redis) okur ve alan adını kendisi üretir. Deploy.
+
+**Başka bir yığın ya da Git'siz:**
+
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. `coolify/<yığın>/docker-compose.yml` içeriğini yapıştır, **Save**.
-3. Alan adını `wordpress` servisine gir (`nginx-fpm`'de `nginx` servisine).
+3. Coolify `wordpress` servisine (`nginx-fpm`'de `nginx`) alan adı üretir; istersen kendi alan adını gir.
 4. **Deploy** et, alan adını aç ve WordPress kurulum ekranında yönetici hesabını oluştur. Bunu deploy'dan hemen sonra yap: o ana kadar alan adını bulan herkes kurulumu tamamlayabilir.
 5. İsteğe bağlı, **Environment Variables** içinde:
    - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: WordPress ilk deploy'da bu hesapla kendiliğinden kurulur, kurulum ekranı hiç çıkmaz.
@@ -37,11 +41,11 @@ Her yığının iki hali var:
 
 ## Docker Compose
 
-Varsayılan yığınla (`mariadb-redis`) hızlı başlangıç, repo kökünden:
+Varsayılan yığınla (`mariadb-redis`) hızlı başlangıç:
 
 ```bash
 git clone https://github.com/FluxWP/docker-wordpress.git
-cd docker-wordpress
+cd docker-wordpress/compose/mariadb-redis
 cp .env.example .env
 # DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD gir: openssl rand -base64 24
 docker compose up -d
