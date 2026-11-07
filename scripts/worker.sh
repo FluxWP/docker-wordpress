@@ -7,7 +7,8 @@
 #        so the install screen is never public,
 #      - installs the site language (WP_LOCALE),
 #      - enables the Redis object cache when WP_REDIS_HOST is set,
-#      - installs Flux Setup when FLUXWP_SETUP=true.
+#      - Flux Setup (FLUXWP_SETUP, default true): downloaded before the install screen,
+#        activated on install, its wizard opens on the first wp-admin visit.
 # 3. Runs due WP-Cron events every WP_CRON_INTERVAL seconds (default 60).
 #
 # Installed in the image as /usr/local/bin/flx-worker; runs in the wordpress:cli image as www-data (33).
@@ -125,22 +126,45 @@ fluxwp_setup_url() {
 	'
 }
 
-setup_fluxwp() {
-	truthy "${FLUXWP_SETUP:-false}" || return 0
-	if wp plugin is-installed flx-setup >/dev/null 2>&1; then
-		wp plugin activate flx-setup >/dev/null 2>&1 || true
+MU_SRC=/usr/local/etc/flux/flx-docker.php
+MU_DST="$ROOT/wp-content/mu-plugins/flx-docker.php"
+
+# Before the install screen is used: Flux Setup files in place + the mu-plugin that
+# activates it on install and opens its wizard on the first wp-admin visit.
+prepare_fluxwp() {
+	if ! truthy "${FLUXWP_SETUP:-true}"; then
+		[ -f "$MU_DST" ] && rm -f "$MU_DST"
 		return 0
 	fi
+	if [ -f "$MU_SRC" ] && ! cmp -s "$MU_SRC" "$MU_DST" 2>/dev/null; then
+		mkdir -p "$ROOT/wp-content/mu-plugins" && cp "$MU_SRC" "$MU_DST" || log "mu-plugin could not be written"
+	fi
+	[ -f "$ROOT/wp-content/plugins/flx-setup/flx-setup.php" ] && return 0
 	url="$(fluxwp_setup_url)" || { log "Flux Setup download address not found"; return 1; }
-	log "installing Flux Setup from $url"
-	zip=/tmp/flx-setup.zip
-	FLX_URL="$url" FLX_ZIP="$zip" php -r '
+	log "downloading Flux Setup from $url"
+	FLX_URL="$url" FLX_DIR="$ROOT/wp-content/plugins" php -r '
+		$zip = tempnam(sys_get_temp_dir(), "flx");
 		$ctx = stream_context_create(array("http" => array("timeout" => 60, "follow_location" => 1, "header" => "User-Agent: fluxwp-docker-wordpress\r\n")));
-		exit(@copy(getenv("FLX_URL"), getenv("FLX_ZIP"), $ctx) && filesize(getenv("FLX_ZIP")) > 1000 ? 0 : 1);
-	' || { log "download failed"; rm -f "$zip"; return 1; }
-	wp plugin install "$zip" --activate; rc=$?
-	rm -f "$zip"
-	return $rc
+		$ok = @copy(getenv("FLX_URL"), $zip, $ctx) && filesize($zip) > 1000;
+		$z = new ZipArchive();
+		$ok = $ok && true === $z->open($zip) && false !== $z->locateName("flx-setup/flx-setup.php");
+		$ok = $ok && $z->extractTo(getenv("FLX_DIR"));
+		@unlink($zip);
+		exit($ok ? 0 : 1);
+	' || { log "Flux Setup download failed, will retry"; return 1; }
+}
+
+# After WordPress is installed: activate (the mu-plugin usually did it already).
+setup_fluxwp() {
+	truthy "${FLUXWP_SETUP:-true}" || return 0
+	prepare_fluxwp || return 1
+	if ! wp plugin is-active flx-setup >/dev/null 2>&1; then
+		wp plugin activate flx-setup || return 1
+		# Activated from the CLI: open the wizard on the first wp-admin visit.
+		if [ "$(wp option get flxk_onboarding 2>/dev/null)" = "pending" ]; then
+			wp option update flx_docker_open_wizard 1 --autoload=no >/dev/null
+		fi
+	fi
 }
 
 bootstrap() {
@@ -174,6 +198,7 @@ log "ready (cron every ${INTERVAL}s)"
 tries=0
 while :; do
 	if [ "$tries" -ge 0 ]; then
+		wp core is-installed >/dev/null 2>&1 || prepare_fluxwp
 		if bootstrap; then
 			log "bootstrap finished"
 			tries=-1

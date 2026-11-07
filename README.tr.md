@@ -33,10 +33,10 @@ Her yığının iki hali var:
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. `coolify/<yığın>/docker-compose.yml` içeriğini yapıştır, **Save**.
 3. Coolify `wordpress` servisine (`nginx-fpm`'de `nginx`) alan adı üretir; istersen kendi alan adını gir.
-4. **Deploy** et, alan adını aç ve WordPress kurulum ekranında yönetici hesabını oluştur. Bunu deploy'dan hemen sonra yap: o ana kadar alan adını bulan herkes kurulumu tamamlayabilir.
+4. **Deploy** et, alan adını aç ve WordPress kurulum ekranında yönetici hesabını oluştur. Bunu deploy'dan hemen sonra yap: o ana kadar alan adını bulan herkes kurulumu tamamlayabilir. FluxWP Panel (flx-setup) kurulu gelir, ilk girişte kurulum sihirbazı açılır.
 5. İsteğe bağlı, **Environment Variables** içinde:
    - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: WordPress ilk deploy'da bu hesapla kendiliğinden kurulur, kurulum ekranı hiç çıkmaz.
-   - `FLUXWP_SETUP=true`: FluxWP Panel'i (flx-setup) kurar ve etkinleştirir.
+   - `FLUXWP_SETUP=false`: FluxWP Panel'i (flx-setup) kurmaz.
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limitleri (aşağıda). Değiştirdikten sonra yeniden deploy et.
 
 ## Docker Compose
@@ -115,7 +115,7 @@ Hepsi isteğe bağlı. Coolify'da environment variable, Compose'da `.env` içine
 | `WP_AUTO_INSTALL` | `false` | `WP_ADMIN_EMAIL` olmadan kur (e-posta `admin@<host>`) |
 | `WP_LOCALE` | `en_US` | İlk kurulumda yüklenecek dil, ör. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | İlk kurulumda site saat dilimi |
-| `FLUXWP_SETUP` | `false` | `true` FluxWP Panel'i (flx-setup) kurar |
+| `FLUXWP_SETUP` | `true` | FluxWP Panel'i (flx-setup) kurar, ilk wp-admin girişinde sihirbazını açar; `false` kurmaz |
 | `FLUXWP_SETUP_URL` | | Özel zip; varsayılan önce `updater.fluxwp.com`, sonra GitHub release |
 | `WP_CRON_INTERVAL` | `60` | Cron çalıştırmaları arası saniye |
 | `WP_ENVIRONMENT_TYPE` | `production` | |
@@ -128,7 +128,7 @@ Gerisi için: `WORDPRESS_CONFIG_EXTRA` (`wp-config.php`'ye eklenen PHP; içindek
 `worker` servisi `wordpress:cli` çalıştırır ve tekrarlansa da zararsız üç iş yapar:
 
 1. WordPress dosyalarını ve veritabanını bekler.
-2. İlk açılışta: WordPress'i kurar (`WP_ADMIN_EMAIL` ya da `WP_AUTO_INSTALL=true` varsa), dili, Redis Object Cache eklentisini ve drop-in'ini (Redis yığınları), FluxWP Panel'i (`FLUXWP_SETUP=true`) kurar. Dil ve FluxWP Panel bir kez yapılır; wp-admin'de sonradan değiştirdiğin korunur.
+2. İlk açılışta: WordPress'i kurar (`WP_ADMIN_EMAIL` ya da `WP_AUTO_INSTALL=true` varsa), dili, Redis Object Cache eklentisini ve drop-in'ini (Redis yığınları), FluxWP Panel'i (`FLUXWP_SETUP`, varsayılan açık) kurar. FluxWP Panel kurulum ekranından önce indirilir; WordPress kurulur kurulmaz etkindir ve ilk wp-admin girişinde kurulum sihirbazı açılır. Dil ve FluxWP Panel bir kez yapılır; wp-admin'de sonradan değiştirdiğin korunur.
 3. Zamanı gelen WP-Cron görevlerini `WP_CRON_INTERVAL` saniyede bir çalıştırır.
 
 WP-CLI de orada:

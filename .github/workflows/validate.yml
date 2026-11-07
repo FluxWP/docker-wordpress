@@ -56,7 +56,7 @@ jobs:
       - name: Start
         run: |
           cp .env.example .env
-          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-db/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci-root/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci-redis/;s/^WP_ADMIN_EMAIL=$/WP_ADMIN_EMAIL=ci@example.com/;s/^WP_ADMIN_PASSWORD=$/WP_ADMIN_PASSWORD=ci-admin/;s/^FLUXWP_SETUP=false$/FLUXWP_SETUP=true/' .env
+          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-db/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci-root/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci-redis/;s/^WP_ADMIN_EMAIL=$/WP_ADMIN_EMAIL=ci@example.com/;s/^WP_ADMIN_PASSWORD=$/WP_ADMIN_PASSWORD=ci-admin/' .env
           docker compose up -d --wait --wait-timeout 300
       - name: Installed and serving
         run: |

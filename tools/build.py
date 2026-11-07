@@ -130,7 +130,8 @@ def header(mode, name, v):
             "# After the first deploy open your domain and create the admin account on the WordPress",
             "# install screen. Optional: set WP_ADMIN_USER, WP_ADMIN_PASSWORD, WP_ADMIN_EMAIL to install",
             "# automatically instead.",
-            "# FLUXWP_SETUP=true installs the Flux Setup plugin (FluxWP installer + updates).",
+            "# Flux Setup (FluxWP installer + updates) comes installed; its wizard opens after the WordPress",
+            "# install. FLUXWP_SETUP=false leaves it out.",
         ]
     else:
         lines += [
@@ -339,7 +340,7 @@ def worker_service(mode, v):
             "WP_LOCALE=${WP_LOCALE:-en_US}",
             "WP_TIMEZONE=${WP_TIMEZONE:-UTC}",
             "WP_CRON_INTERVAL=${WP_CRON_INTERVAL:-60}",
-            "FLUXWP_SETUP=${FLUXWP_SETUP:-false}",
+            "FLUXWP_SETUP=${FLUXWP_SETUP:-true}",
             "FLUXWP_SETUP_URL=${FLUXWP_SETUP_URL:-}",
         ])
         + depends(v, [("wordpress", "service_started")])
@@ -398,7 +399,7 @@ def env_example(name, v):
         "WP_TIMEZONE=UTC",
         "",
         "# Install the Flux Setup plugin (FluxWP installer and updates).",
-        "FLUXWP_SETUP=false",
+        "FLUXWP_SETUP=true",
         "# Optional custom zip address (default: updater.fluxwp.com, then the GitHub release).",
         "FLUXWP_SETUP_URL=",
         "",

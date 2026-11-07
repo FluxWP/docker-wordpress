@@ -9,6 +9,7 @@ RUN /usr/local/bin/flx-min-php
 
 COPY config/php/zz-flux.ini /usr/local/etc/php/conf.d/zz-flux.ini
 COPY config/wordpress/wp-config-extra.php /usr/local/etc/flux/wp-config-extra.php
+COPY config/wordpress/flx-docker.php /usr/local/etc/flux/flx-docker.php
 COPY --chmod=755 scripts/worker.sh /usr/local/bin/flx-worker
 
 ENV WORDPRESS_CONFIG_EXTRA="if (is_file('/usr/local/etc/flux/wp-config-extra.php')) { require '/usr/local/etc/flux/wp-config-extra.php'; }" \

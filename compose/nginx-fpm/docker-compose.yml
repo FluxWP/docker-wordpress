@@ -85,7 +85,7 @@ services:
       - WP_LOCALE=${WP_LOCALE:-en_US}
       - WP_TIMEZONE=${WP_TIMEZONE:-UTC}
       - WP_CRON_INTERVAL=${WP_CRON_INTERVAL:-60}
-      - FLUXWP_SETUP=${FLUXWP_SETUP:-false}
+      - FLUXWP_SETUP=${FLUXWP_SETUP:-true}
       - FLUXWP_SETUP_URL=${FLUXWP_SETUP_URL:-}
     depends_on:
       mariadb:
