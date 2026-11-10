@@ -1,11 +1,16 @@
 #!/bin/sh
 # FluxWP docker-wordpress - worker container.
-# Runtime revision: 2026.11.10.1
+# Runtime revision: 2026.11.10.2
 #
 # 1. Waits for the WordPress files and the database.
 # 2. One-time bootstrap (idempotent, safe on every restart):
-#      - installs WordPress when WP_URL + WP_ADMIN_EMAIL (or WP_AUTO_INSTALL=true) are set,
-#        so the install screen is never public,
+#      - installs WordPress when WP_URL is set and WP_ADMIN_EMAIL or WP_AUTO_INSTALL
+#        (default true) is set. The install screen stays closed in the web server.
+#        A generated admin password is written to /run/flx-private/admin-password
+#        (mode 0600, only this worker can read it), not the logs:
+#          docker compose exec worker cat /run/flx-private/admin-password
+#        Change it after the first login, then delete the file:
+#          docker compose exec worker rm /run/flx-private/admin-password
 #      - installs the site language (WP_LOCALE),
 #      - enables the Redis object cache when WP_REDIS_HOST is set,
 #      - Flux Setup (FLUXWP_SETUP, default true): downloaded before the install screen,
@@ -62,32 +67,91 @@ install_core() {
 	if wp core is-installed >/dev/null 2>&1; then
 		return 0
 	fi
-	# WP_AUTO_INSTALL=true (default on Coolify): install without any input,
+	# WP_AUTO_INSTALL defaults to true: install without WP_ADMIN_EMAIL,
 	# admin e-mail falls back to admin@<site host>.
-	if [ -z "${WP_ADMIN_EMAIL:-}" ] && [ -n "${WP_URL:-}" ] && truthy "${WP_AUTO_INSTALL:-false}"; then
+	if [ -z "${WP_ADMIN_EMAIL:-}" ] && [ -n "${WP_URL:-}" ] && truthy "${WP_AUTO_INSTALL:-true}"; then
 		host="$(echo "$WP_URL" | sed -E 's#^[a-zA-Z]+://##; s#[/:].*$##')"
 		WP_ADMIN_EMAIL="admin@${host:-example.com}"
 	fi
 	if [ -z "${WP_URL:-}" ] || [ -z "${WP_ADMIN_EMAIL:-}" ]; then
 		if [ -z "${FLX_WARNED:-}" ]; then
-			log "WordPress is not installed yet: open ${WP_URL:-your site} and finish the install screen,"
-			log "or set WP_ADMIN_EMAIL (+ WP_ADMIN_USER, WP_ADMIN_PASSWORD) to install automatically."
+			log "WordPress is not installed. The install screen is closed."
+			log "Leave WP_AUTO_INSTALL=true (default) or set WP_ADMIN_EMAIL to install from this worker,"
+			log "or set WP_INSTALL_TOKEN to open /wp-admin/install.php in the browser."
 			FLX_WARNED=1
 		fi
 		return 1
 	fi
 	log "installing WordPress at $WP_URL"
-	set -- --url="$WP_URL" --title="${WP_TITLE:-WordPress}" \
-		--admin_user="${WP_ADMIN_USER:-admin}" --admin_email="$WP_ADMIN_EMAIL" --skip-email
-	if [ -n "${WP_ADMIN_PASSWORD:-}" ]; then
-		set -- "$@" --admin_password="$WP_ADMIN_PASSWORD"
-	else
-		log "WP_ADMIN_PASSWORD is empty: a random password is printed below, save it."
+	generated=0
+	if [ -z "${WP_ADMIN_PASSWORD:-}" ]; then
+		generated=1
+		pass="$(php -r 'echo bin2hex(random_bytes(18));')"
+		write_admin_password "$pass" || { unset pass; return 1; }
+		unset pass
 	fi
-	wp core install "$@" || return 1
+	# --prompt reads the password from stdin so it stays out of the process list.
+	# wp-cli repeats the resolved command on stdout; that stream is discarded.
+	old_umask="$(umask)"
+	umask 077
+	if [ "$generated" -eq 1 ]; then
+		wp core install --url="$WP_URL" --title="${WP_TITLE:-WordPress}" \
+			--admin_user="${WP_ADMIN_USER:-admin}" --admin_email="$WP_ADMIN_EMAIL" \
+			--skip-email --prompt=admin_password >/tmp/flx-wp-install.out 2>&1 < /run/flx-private/admin-password
+		status=$?
+	else
+		printf '%s\n' "$WP_ADMIN_PASSWORD" | wp core install --url="$WP_URL" --title="${WP_TITLE:-WordPress}" \
+			--admin_user="${WP_ADMIN_USER:-admin}" --admin_email="$WP_ADMIN_EMAIL" \
+			--skip-email --prompt=admin_password >/tmp/flx-wp-install.out 2>&1
+		status=$?
+	fi
+	umask "$old_umask"
+	rm -f /tmp/flx-wp-install.out
+	if [ "$status" -ne 0 ]; then
+		log "wp core install failed"
+		return 1
+	fi
 	log "WordPress installed: $WP_URL/wp-admin  user: ${WP_ADMIN_USER:-admin}  admin e-mail: $WP_ADMIN_EMAIL"
-	[ -n "${WP_ADMIN_PASSWORD:-}" ] && log "password: the WP_ADMIN_PASSWORD variable"
+	if [ "$generated" -eq 1 ]; then
+		log "Generated admin password was not logged. Read it with: docker compose exec worker cat /run/flx-private/admin-password"
+		log "Change it after the first login, then: docker compose exec worker rm /run/flx-private/admin-password"
+	else
+		log "password: the WP_ADMIN_PASSWORD variable"
+	fi
 	wp rewrite structure '/%postname%/' --hard >/dev/null 2>&1 || true
+}
+
+# Store a generated password where only this worker can read it. Never print it.
+write_admin_password() {
+	dir=/run/flx-private
+	dest="$dir/admin-password"
+	if [ ! -d "$dir" ] || [ ! -w "$dir" ]; then
+		log "admin password directory $dir is missing or not writable"
+		return 1
+	fi
+	old_umask="$(umask)"
+	umask 077
+	tmp="$dir/admin-password.tmp.$$"
+	if ! printf '%s\n' "$1" > "$tmp"; then
+		umask "$old_umask"
+		rm -f "$tmp"
+		log "could not write the admin password file"
+		return 1
+	fi
+	if ! mv "$tmp" "$dest"; then
+		umask "$old_umask"
+		rm -f "$tmp"
+		log "could not write the admin password file"
+		return 1
+	fi
+	if ! chmod 0600 "$dest"; then
+		umask "$old_umask"
+		rm -f "$dest"
+		log "could not set the admin password file mode"
+		return 1
+	fi
+	umask "$old_umask"
+	return 0
 }
 
 setup_locale() {
@@ -111,28 +175,6 @@ setup_redis() {
 	wp redis enable || return 1
 }
 
-# Latest Flux Setup zip: FluxWP update server first, GitHub release as fallback.
-fluxwp_setup_url() {
-	if [ -n "${FLUXWP_SETUP_URL:-}" ]; then
-		echo "$FLUXWP_SETUP_URL"
-		return 0
-	fi
-	php -r '
-		$ctx = stream_context_create(array("http" => array("method" => "HEAD", "timeout" => 10, "ignore_errors" => true)));
-		$u = "https://updater.fluxwp.com/v1/download/flx-setup/latest.zip";
-		$h = @get_headers($u, false, $ctx);
-		if ($h && preg_match("#\s(200|30\d)\s#", $h[0])) { echo $u; exit(0); }
-		$ctx = stream_context_create(array("http" => array("timeout" => 15, "header" => "User-Agent: fluxwp-docker-wordpress\r\nAccept: application/vnd.github+json\r\n")));
-		$j = json_decode((string) @file_get_contents("https://api.github.com/repos/FluxWP/FluxWP/releases?per_page=100", false, $ctx), true);
-		foreach ((array) $j as $r) {
-			if (empty($r["draft"]) && empty($r["prerelease"]) && 0 === strpos((string) $r["tag_name"], "flx-setup-v")) {
-				foreach ($r["assets"] as $a) { if ("flx-setup.zip" === $a["name"]) { echo $a["browser_download_url"]; exit(0); } }
-			}
-		}
-		exit(1);
-	'
-}
-
 MU_SRC=/usr/local/etc/flux/flx-docker.php
 MU_DST="$ROOT/wp-content/mu-plugins/flx-docker.php"
 
@@ -147,18 +189,8 @@ prepare_fluxwp() {
 		mkdir -p "$ROOT/wp-content/mu-plugins" && cp "$MU_SRC" "$MU_DST" || log "mu-plugin could not be written"
 	fi
 	[ -f "$ROOT/wp-content/plugins/flx-setup/flx-setup.php" ] && return 0
-	url="$(fluxwp_setup_url)" || { log "Flux Setup download address not found"; return 1; }
-	log "downloading Flux Setup from $url"
-	FLX_URL="$url" FLX_DIR="$ROOT/wp-content/plugins" php -r '
-		$zip = tempnam(sys_get_temp_dir(), "flx");
-		$ctx = stream_context_create(array("http" => array("timeout" => 60, "follow_location" => 1, "header" => "User-Agent: fluxwp-docker-wordpress\r\n")));
-		$ok = @copy(getenv("FLX_URL"), $zip, $ctx) && filesize($zip) > 1000;
-		$z = new ZipArchive();
-		$ok = $ok && true === $z->open($zip) && false !== $z->locateName("flx-setup/flx-setup.php");
-		$ok = $ok && $z->extractTo(getenv("FLX_DIR"));
-		@unlink($zip);
-		exit($ok ? 0 : 1);
-	' || { log "Flux Setup download failed, will retry"; return 1; }
+	log "downloading Flux Setup"
+	FLX_DIR="$ROOT/wp-content/plugins" php /usr/local/bin/flx-setup-zip.php || { log "Flux Setup download failed, will retry"; return 1; }
 }
 
 # After WordPress is installed: activate (the mu-plugin usually did it already).

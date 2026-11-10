@@ -18,7 +18,7 @@ jobs:
         run: python3 tools/build.py --check
 
       - name: Worker script syntax
-        run: sh -n scripts/worker.sh && sh -n images/min-php.sh
+        run: sh -n scripts/worker.sh && sh -n images/min-php.sh && sh -n scripts/nginx-entrypoint.sh
 
       - name: Worker wake behavior
         run: python3 -m unittest discover -s tests -p 'test_*.py'
@@ -71,6 +71,8 @@ jobs:
           curl -fsS -o /dev/null http://localhost:8080/
           curl -fsS -o /dev/null http://localhost:8080/wp-login.php
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/wp-config.php)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/wp-admin/install.php)" = 403
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/wp-admin/setup-config.php)" = 403
           docker compose exec -T wordpress php -r 'exit(ini_get("session.upload_progress.enabled") ? 1 : 0);'
       - name: FluxWP Panel and Redis
         run: |

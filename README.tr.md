@@ -33,9 +33,10 @@ Her yığının iki hali var:
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. `coolify/<yığın>/docker-compose.yml` içeriğini yapıştır, **Save**.
 3. Coolify `wordpress` servisine (`nginx-fpm`'de `nginx`) alan adı üretir; istersen kendi alan adını gir.
-4. **Deploy** et, alan adını aç ve WordPress kurulum ekranında yönetici hesabını oluştur. Bunu deploy'dan hemen sonra yap: o ana kadar alan adını bulan herkes kurulumu tamamlayabilir. FluxWP Panel (flx-setup) kurulu gelir, ilk girişte kurulum sihirbazı açılır.
+4. **Deploy** et. Worker ilk açılışta WordPress'i kurar (`WP_AUTO_INSTALL` varsayılanı `true`). FluxWP Panel (flx-setup) kurulu gelir, ilk girişte kurulum sihirbazı açılır. `WP_ADMIN_PASSWORD` boşsa üretilen parola loga yazılmaz. Oku: `docker compose exec worker cat /run/flx-private/admin-password`. İlk girişten sonra parolayı değiştir, sonra dosyayı sil: `docker compose exec worker rm /run/flx-private/admin-password`.
 5. İsteğe bağlı, **Environment Variables** içinde:
-   - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: WordPress ilk deploy'da bu hesapla kendiliğinden kurulur, kurulum ekranı hiç çıkmaz.
+   - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: üretilen parola ve `admin@<host>` yerine bu hesabı kullan.
+   - `WP_AUTO_INSTALL=false`: worker kurulum yapmasın. `WP_INSTALL_TOKEN` (yalnız harf ve rakam, örneğin `openssl rand -hex 24`) yoksa `/wp-admin/install.php` ve `/wp-admin/setup-config.php` kapalı kalır. Tarayıcıda bir kez `/wp-admin/install.php?wp_install_token=...` aç; sorgu dizesi erişim günlüğüne düşer, otomasyon için `X-WP-Install-Token` başlığını kullan. Kurulum bitince `WP_INSTALL_TOKEN` değerini kaldır; sorgu dizesindeki jeton Apache erişim günlüğüne düşebilir.
    - `FLUXWP_SETUP=false`: FluxWP Panel'i (flx-setup) kurmaz.
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limitleri (aşağıda). Değiştirdikten sonra yeniden deploy et.
 
@@ -62,7 +63,17 @@ docker compose up -d
 
 Site `http://localhost:8080` adresinde açılır (`HTTP_PORT`). Canlıda önüne HTTPS'li bir reverse proxy koy (Caddy, Traefik, nginx). WordPress HTTPS'i `X-Forwarded-Proto`'dan anlar; proxy özel ağdaysa ziyaretçinin gerçek IP'si `X-Forwarded-For`'dan okunur.
 
-Kendiliğinden kurulum için `WP_URL` + `WP_ADMIN_EMAIL` gir. `WP_ADMIN_PASSWORD` boşsa rastgele şifre bir kez `docker compose logs worker` çıktısına yazılır.
+`WP_AUTO_INSTALL` varsayılanı `true`. `WP_URL` doluysa ilk açılışta WordPress kurulur. `WP_ADMIN_PASSWORD` boşsa parola yalnız `/run/flx-private/admin-password` dosyasına yazılır (mod `0600`, yalnız worker okur):
+
+```bash
+docker compose exec worker cat /run/flx-private/admin-password
+```
+
+İlk girişten sonra parolayı değiştir, sonra dosyayı sil:
+
+```bash
+docker compose exec worker rm /run/flx-private/admin-password
+```
 
 ## İmajlar
 
@@ -89,7 +100,7 @@ Kendi imajını build etmeden bir dosyayı değiştirmek için kendi dosyanı ü
 | Healthcheck her 2 sn'de ana sayfayı açıyor (her yoklamada PHP + DB) | 15 sn'de bir statik dosya (Apache) ya da nginx üzerinden FPM ping, `start_period` ile |
 | Koşulsuz `depends_on` | Veritabanı ve Redis sağlıklı olana kadar bekler |
 | Sayfa açılışında WP-Cron | `DISABLE_WP_CRON` + worker 60 sn'de bir zamanı gelen görevleri çalıştırır; trafiksiz sitede de cron işler |
-| Deploy sonrası kurulum ekranı açık | İsteğe bağlı otomatik kurulum, yönetici bilgileri üretilir |
+| Deploy sonrası kurulum ekranı açık | Kurulum ekranı kapalı. Otomatik kurulum varsayılan. Üretilen parola yalnız worker'ın okuduğu dosyada |
 | MariaDB varsayılanları | utf8mb4, 256 MB buffer pool, `skip-name-resolve`, performance schema kapalı (~100-400 MB RAM tasarrufu), `MARIADB_AUTO_UPGRADE` |
 | - | PHP 8.4.27+ (PHP2Shell, CVE-2026-109618/109619 yamalı) ve `session.upload_progress` kapalı (doğrulanmış sömürü yolu) |
 | - | `DISALLOW_FILE_EDIT`, `no-new-privileges`, DB/Redis portları dışa kapalı, sunucu sürümü gizli, `wp-config.php`/`readme.html`/uploads içinde PHP engelli, proxy arkasında gerçek IP |
@@ -111,12 +122,14 @@ Hepsi isteğe bağlı. Coolify'da environment variable, Compose'da `.env` içine
 | `DB_BUFFER_POOL_SIZE` | `256M` | Veritabanına ayırdığın RAM'in ~%50'si |
 | `DB_MAX_CONNECTIONS` | `100` | |
 | `REDIS_MAXMEMORY` | `128mb` | Yalnız önbellek, kalıcılık yok, LRU |
-| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Otomatik kurulum (Coolify adresi doldurur) |
-| `WP_AUTO_INSTALL` | `false` | `WP_ADMIN_EMAIL` olmadan kur (e-posta `admin@<host>`) |
+| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Otomatik kurulum (Coolify adresi doldurur). Parola boşsa üretilir |
+| `WP_AUTO_INSTALL` | `true` | İlk açılışta `WP_ADMIN_EMAIL` olmadan kur (e-posta `admin@<host>`). `false` worker kurulumunu atlar |
+| `WP_INSTALL_TOKEN` | | `/wp-admin/install.php` ve `/wp-admin/setup-config.php` için harf-rakam jeton (en çok 128). Boşsa ikisi de kapalı. Kurulum bitince kaldır; sorgu dizesindeki jeton Apache erişim günlüğüne düşebilir |
 | `WP_LOCALE` | `en_US` | İlk kurulumda yüklenecek dil, ör. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | İlk kurulumda site saat dilimi |
 | `FLUXWP_SETUP` | `true` | FluxWP Panel'i (flx-setup) kurar, ilk wp-admin girişinde sihirbazını açar; `false` kurmaz |
-| `FLUXWP_SETUP_URL` | | Özel zip; varsayılan önce `updater.fluxwp.com`, sonra GitHub release |
+| `FLUXWP_SETUP_URL` | | Özel zip; `https` olmalı. Varsayılan önce `updater.fluxwp.com`, sonra GitHub release |
+| `FLUXWP_SETUP_SHA256` | | Flux Setup zip'i için isteğe bağlı SHA-256 pini. Boşsa pin yok |
 | `WP_CRON_INTERVAL` | `60` | Her turun ardından periyodik cron yedek aralığı |
 | `WP_BACKGROUND_POLL_INTERVAL` | `2` | Hafif ortak dosya bildirimi kontrol aralığı; boşta PHP açılmaz |
 | `WP_BACKGROUND_WORKERS_PER_PLUGIN` | `3` | Eklenti başına eşzamanlı kayıtlı Flux arka plan işi |
@@ -131,7 +144,7 @@ Gerisi için: `WORDPRESS_CONFIG_EXTRA` (`wp-config.php`'ye eklenen PHP; içindek
 `worker` servisi `wordpress:cli` çalıştırır ve tekrarlansa da zararsız üç iş yapar:
 
 1. WordPress dosyalarını ve veritabanını bekler.
-2. İlk açılışta: WordPress'i kurar (`WP_ADMIN_EMAIL` ya da `WP_AUTO_INSTALL=true` varsa), dili, Redis Object Cache eklentisini ve drop-in'ini (Redis yığınları), FluxWP Panel'i (`FLUXWP_SETUP`, varsayılan açık) kurar. FluxWP Panel kurulum ekranından önce indirilir; WordPress kurulur kurulmaz etkindir ve ilk wp-admin girişinde kurulum sihirbazı açılır. Dil ve FluxWP Panel bir kez yapılır; wp-admin'de sonradan değiştirdiğin korunur.
+2. İlk açılışta: WordPress'i kurar (`WP_AUTO_INSTALL` varsayılanı `true`; adres için `WP_ADMIN_EMAIL`, yoksa `admin@<host>`), dili, Redis Object Cache eklentisini ve drop-in'ini (Redis yığınları), FluxWP Panel'i (`FLUXWP_SETUP`, varsayılan açık) kurar. Zip yalnız HTTPS ile iner, boyutu sınırlıdır ve içinde `flx-setup/flx-setup.php` varsa, dışarı kaçan yol yoksa kurulur. WordPress kurulur kurulmaz etkindir ve ilk wp-admin girişinde kurulum sihirbazı açılır. Dil ve FluxWP Panel bir kez yapılır; wp-admin'de sonradan değiştirdiğin korunur. Üretilen yönetici parolası loga değil, `/run/flx-private/admin-password` dosyasına yazılır (mod `0600`, yalnız worker okur). Oku: `docker compose exec worker cat /run/flx-private/admin-password`. İlk girişten sonra parolayı değiştir, sonra dosyayı sil: `docker compose exec worker rm /run/flx-private/admin-password`.
 3. Ortak dosya bildirimlerini varsayılan 2 saniyede bir kontrol ederek zamanı gelen cron işlerini çalıştırır; `WP_CRON_INTERVAL` periyodik yedek tetiklemesi korunur. Boşta yapılan kontroller PHP veya WordPress başlatmaz.
 
 

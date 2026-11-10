@@ -4,7 +4,10 @@
 ARG BASE=nginx:1.30-alpine
 FROM ${BASE}
 
-COPY config/nginx/default.conf /etc/nginx/conf.d/default.conf
+ENV WP_INSTALL_TOKEN=""
+COPY config/nginx/default.conf /etc/nginx/templates/default.conf.template
+COPY --chmod=755 scripts/nginx-entrypoint.sh /flx-entrypoint.sh
+ENTRYPOINT ["/flx-entrypoint.sh"]
 
 LABEL org.opencontainers.image.source="https://github.com/FluxWP/docker-wordpress" \
       org.opencontainers.image.description="nginx in front of the FluxWP WordPress PHP-FPM image" \

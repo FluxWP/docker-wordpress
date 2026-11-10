@@ -44,6 +44,8 @@ services:
     restart: unless-stopped
     volumes:
       - 'wordpress-files:/var/www/html:ro'
+    environment:
+      - WP_INSTALL_TOKEN=${WP_INSTALL_TOKEN:-}
     ports:
       - '${HTTP_PORT:-8080}:80'
     depends_on:
@@ -61,6 +63,7 @@ services:
     restart: unless-stopped
     volumes:
       - 'wordpress-files:/var/www/html'
+      - 'flx-private:/run/flx-private'
     environment:
       - WORDPRESS_DB_HOST=mariadb
       - WORDPRESS_DB_USER=${DB_USER:-wordpress}
@@ -81,7 +84,7 @@ services:
       - WP_ADMIN_USER=${WP_ADMIN_USER:-admin}
       - WP_ADMIN_PASSWORD=${WP_ADMIN_PASSWORD:-}
       - WP_ADMIN_EMAIL=${WP_ADMIN_EMAIL:-}
-      - WP_AUTO_INSTALL=${WP_AUTO_INSTALL:-false}
+      - WP_AUTO_INSTALL=${WP_AUTO_INSTALL:-true}
       - WP_LOCALE=${WP_LOCALE:-en_US}
       - WP_TIMEZONE=${WP_TIMEZONE:-UTC}
       - WP_CRON_INTERVAL=${WP_CRON_INTERVAL:-60}
@@ -90,6 +93,7 @@ services:
       - WP_BACKGROUND_MAX_PROCESSES=${WP_BACKGROUND_MAX_PROCESSES:-9}
       - FLUXWP_SETUP=${FLUXWP_SETUP:-true}
       - FLUXWP_SETUP_URL=${FLUXWP_SETUP_URL:-}
+      - FLUXWP_SETUP_SHA256=${FLUXWP_SETUP_SHA256:-}
     depends_on:
       mariadb:
         condition: service_healthy
@@ -156,4 +160,5 @@ services:
 
 volumes:
   wordpress-files:
+  flx-private:
   mariadb-data:
