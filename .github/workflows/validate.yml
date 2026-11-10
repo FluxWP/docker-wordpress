@@ -80,7 +80,13 @@ jobs:
           done
           docker compose exec -T worker wp plugin is-active flx-setup
           if grep -q '^REDIS_PASSWORD' .env; then
-            docker compose exec -T worker wp redis status | grep -qi 'Connected'
+            for i in $(seq 1 24); do
+              if docker compose exec -T worker wp redis status 2>/dev/null | grep -Eqi '^Status:[[:space:]]+Connected'; then
+                break
+              fi
+              sleep 5
+            done
+            docker compose exec -T worker wp redis status | grep -Eqi '^Status:[[:space:]]+Connected'
           fi
       - name: Logs
         if: always()
