@@ -8,6 +8,8 @@ ENV WP_INSTALL_TOKEN=""
 COPY config/nginx/default.conf /etc/nginx/templates/default.conf.template
 COPY --chmod=755 scripts/nginx-entrypoint.sh /flx-entrypoint.sh
 ENTRYPOINT ["/flx-entrypoint.sh"]
+# Setting ENTRYPOINT clears the base image's CMD; restore it, or the container exits at once.
+CMD ["nginx", "-g", "daemon off;"]
 
 LABEL org.opencontainers.image.source="https://github.com/FluxWP/docker-wordpress" \
       org.opencontainers.image.description="nginx in front of the FluxWP WordPress PHP-FPM image" \
