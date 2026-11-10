@@ -117,7 +117,10 @@ All optional. In Coolify they are environment variables, with Compose they go in
 | `WP_TIMEZONE` | `UTC` | Site timezone on first setup |
 | `FLUXWP_SETUP` | `true` | Installs FluxWP Panel (flx-setup) and opens its wizard on the first wp-admin visit; `false` leaves it out |
 | `FLUXWP_SETUP_URL` | | Custom zip; default is `updater.fluxwp.com`, then the GitHub release |
-| `WP_CRON_INTERVAL` | `60` | Seconds between cron runs |
+| `WP_CRON_INTERVAL` | `60` | Periodic cron fallback after each pass |
+| `WP_BACKGROUND_POLL_INTERVAL` | `2` | Seconds between lightweight shared-file wake checks; no PHP boot while idle |
+| `WP_BACKGROUND_WORKERS_PER_PLUGIN` | `3` | Concurrent registered Flux background batches per plugin |
+| `WP_BACKGROUND_MAX_PROCESSES` | `9` | Site-wide ceiling for those active background batches |
 | `WP_ENVIRONMENT_TYPE` | `production` | |
 | `WORDPRESS_TABLE_PREFIX` | `wp_` | Only before the first install |
 
@@ -129,7 +132,12 @@ Anything else: `WORDPRESS_CONFIG_EXTRA` (PHP appended to `wp-config.php`; keep t
 
 1. Waits for the WordPress files and the database.
 2. On first start: installs WordPress (when `WP_ADMIN_EMAIL` or `WP_AUTO_INSTALL=true` is set), the language, the Redis Object Cache plugin and its drop-in (Redis stacks), and FluxWP Panel (`FLUXWP_SETUP`, on by default). FluxWP Panel is downloaded before the install screen is used, so it is active as soon as WordPress is installed, and the first wp-admin visit opens its setup wizard. Language and FluxWP Panel are done once, so later changes in wp-admin stay.
-3. Runs due WP-Cron events every `WP_CRON_INTERVAL` seconds.
+3. Runs due WP-Cron events on shared-volume wake signals (checked every 2 seconds by default), while retaining the `WP_CRON_INTERVAL` periodic fallback. Idle checks do not start PHP or WordPress.
+
+
+The shared library bundled in Flux Mail, Certificates and Backup runs independent jobs concurrently: default **3 per plugin**, with a **9-job site-wide ceiling**. Change `WP_BACKGROUND_WORKERS_PER_PLUGIN` and `WP_BACKGROUND_MAX_PROCESSES` in the Coolify Environment Variables panel or Compose `.env`, then recreate the worker. These are capacity controls, not a claim that every server can sustain nine heavy jobs. Resource locks, mailbox quotas and the single-backup rule still apply. Unregistered third-party cron handlers keep their normal execution path.
+
+Fast wake requires the updated worker image and compatible library bundles; older combinations keep the 60-second cron fallback. Signals contain only due timestamps, never message bodies or recipients. A new ready job can start after a short wake/WordPress bootstrap delay when capacity is free; a busy pool, future schedule, transport quota or retry delay can still postpone it. Normal WordPress installations without Docker keep their native scheduler.
 
 WP-CLI is available there too:
 

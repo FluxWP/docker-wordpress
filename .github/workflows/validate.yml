@@ -20,6 +20,9 @@ jobs:
       - name: Worker script syntax
         run: sh -n scripts/worker.sh && sh -n images/min-php.sh
 
+      - name: Worker wake behavior
+        run: python3 -m unittest discover -s tests -p 'test_*.py'
+
       - name: Compose files are valid
         run: |
           for dir in compose/*/; do

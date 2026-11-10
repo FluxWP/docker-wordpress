@@ -1,5 +1,6 @@
 #!/bin/sh
 # FluxWP docker-wordpress - worker container.
+# Runtime revision: 2026.11.10.1
 #
 # 1. Waits for the WordPress files and the database.
 # 2. One-time bootstrap (idempotent, safe on every restart):
@@ -9,7 +10,7 @@
 #      - enables the Redis object cache when WP_REDIS_HOST is set,
 #      - Flux Setup (FLUXWP_SETUP, default true): downloaded before the install screen,
 #        activated on install, its wizard opens on the first wp-admin visit.
-# 3. Runs due WP-Cron events every WP_CRON_INTERVAL seconds (default 60).
+# 3. Runs due cron on shared-volume wake signals (poll 2s), with a 60s fallback.
 #
 # Installed in the image as /usr/local/bin/flx-worker; runs in the wordpress:cli image as www-data (33).
 
@@ -17,6 +18,12 @@ set -u
 
 ROOT=/var/www/html
 INTERVAL="${WP_CRON_INTERVAL:-60}"
+POLL="${WP_BACKGROUND_POLL_INTERVAL:-2}"
+export FLX_BACKGROUND_WAKE=1
+case "$INTERVAL" in ''|*[!0-9]*) INTERVAL=60 ;; esac
+case "$POLL" in ''|*[!0-9]*) POLL=2 ;; esac
+[ "$INTERVAL" -ge 1 ] && [ "$INTERVAL" -le 3600 ] || INTERVAL=60
+[ "$POLL" -ge 1 ] && [ "$POLL" -le 60 ] || POLL=2
 FLAG=flx_docker_bootstrap
 
 log() { echo "[worker] $(date -u '+%Y-%m-%d %H:%M:%S') $*"; }
@@ -190,6 +197,32 @@ run_cron() {
 	wp cron event run --due-now --quiet 2>&1 | grep -v '^$' || true
 }
 
+# Check tiny shared-volume notifications without bootstrapping PHP/WordPress.
+# Remove due signals before running cron, so arrivals during a pass survive.
+wake_due() {
+	now="$(date +%s)"
+	found=1
+	for signal in "$ROOT/wp-content/.flx-background-wake/"[0-9]*; do
+		[ -f "$signal" ] || continue
+		due="${signal##*/}"
+		case "$due" in ''|*[!0-9]*) continue ;; esac
+		[ "${#due}" -le 12 ] || continue
+		if [ "$due" -le "$now" ]; then
+			rm -f "$signal"
+			found=0
+		fi
+	done
+	return "$found"
+}
+
+wait_for_work() {
+	deadline=$(( $(date +%s) + INTERVAL ))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		wake_due && return 0
+		sleep "$POLL"
+	done
+}
+
 wait_files
 wait_db
 log "ready (cron every ${INTERVAL}s)"
@@ -213,5 +246,5 @@ while :; do
 		fi
 	fi
 	run_cron
-	sleep "$INTERVAL"
+	wait_for_work
 done

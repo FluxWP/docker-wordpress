@@ -14,6 +14,7 @@ COPY --chmod=755 scripts/worker.sh /usr/local/bin/flx-worker
 
 ENV WORDPRESS_CONFIG_EXTRA="if (is_file('/usr/local/etc/flux/wp-config-extra.php')) { require '/usr/local/etc/flux/wp-config-extra.php'; }" \
     WP_CRON_MODE=worker \
+    FLX_BACKGROUND_WAKE=1 \
     HOME=/tmp \
     WP_CLI_CACHE_DIR=/tmp/wp-cli-cache
 

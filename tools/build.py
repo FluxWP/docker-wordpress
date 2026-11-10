@@ -340,6 +340,9 @@ def worker_service(mode, v):
             "WP_LOCALE=${WP_LOCALE:-en_US}",
             "WP_TIMEZONE=${WP_TIMEZONE:-UTC}",
             "WP_CRON_INTERVAL=${WP_CRON_INTERVAL:-60}",
+            "WP_BACKGROUND_POLL_INTERVAL=${WP_BACKGROUND_POLL_INTERVAL:-2}",
+            "WP_BACKGROUND_WORKERS_PER_PLUGIN=${WP_BACKGROUND_WORKERS_PER_PLUGIN:-3}",
+            "WP_BACKGROUND_MAX_PROCESSES=${WP_BACKGROUND_MAX_PROCESSES:-9}",
             "FLUXWP_SETUP=${FLUXWP_SETUP:-true}",
             "FLUXWP_SETUP_URL=${FLUXWP_SETUP_URL:-}",
         ])
@@ -419,6 +422,10 @@ def env_example(name, v):
         "",
         "WP_ENVIRONMENT_TYPE=production",
         "WP_CRON_INTERVAL=60",
+        "# Fast wake checks use only the shared filesystem, not PHP/WordPress.",
+        "WP_BACKGROUND_POLL_INTERVAL=2",
+        "WP_BACKGROUND_WORKERS_PER_PLUGIN=3",
+        "WP_BACKGROUND_MAX_PROCESSES=9",
         "WORDPRESS_TABLE_PREFIX=wp_",
     ]
     return "\n".join(lines) + "\n"
