@@ -117,7 +117,10 @@ Hepsi isteğe bağlı. Coolify'da environment variable, Compose'da `.env` içine
 | `WP_TIMEZONE` | `UTC` | İlk kurulumda site saat dilimi |
 | `FLUXWP_SETUP` | `true` | FluxWP Panel'i (flx-setup) kurar, ilk wp-admin girişinde sihirbazını açar; `false` kurmaz |
 | `FLUXWP_SETUP_URL` | | Özel zip; varsayılan önce `updater.fluxwp.com`, sonra GitHub release |
-| `WP_CRON_INTERVAL` | `60` | Cron çalıştırmaları arası saniye |
+| `WP_CRON_INTERVAL` | `60` | Her turun ardından periyodik cron yedek aralığı |
+| `WP_BACKGROUND_POLL_INTERVAL` | `2` | Hafif ortak dosya bildirimi kontrol aralığı; boşta PHP açılmaz |
+| `WP_BACKGROUND_WORKERS_PER_PLUGIN` | `3` | Eklenti başına eşzamanlı kayıtlı Flux arka plan işi |
+| `WP_BACKGROUND_MAX_PROCESSES` | `9` | Bu işler için site genelindeki toplam üst sınır |
 | `WP_ENVIRONMENT_TYPE` | `production` | |
 | `WORDPRESS_TABLE_PREFIX` | `wp_` | Yalnız ilk kurulumdan önce |
 
@@ -129,7 +132,12 @@ Gerisi için: `WORDPRESS_CONFIG_EXTRA` (`wp-config.php`'ye eklenen PHP; içindek
 
 1. WordPress dosyalarını ve veritabanını bekler.
 2. İlk açılışta: WordPress'i kurar (`WP_ADMIN_EMAIL` ya da `WP_AUTO_INSTALL=true` varsa), dili, Redis Object Cache eklentisini ve drop-in'ini (Redis yığınları), FluxWP Panel'i (`FLUXWP_SETUP`, varsayılan açık) kurar. FluxWP Panel kurulum ekranından önce indirilir; WordPress kurulur kurulmaz etkindir ve ilk wp-admin girişinde kurulum sihirbazı açılır. Dil ve FluxWP Panel bir kez yapılır; wp-admin'de sonradan değiştirdiğin korunur.
-3. Zamanı gelen WP-Cron görevlerini `WP_CRON_INTERVAL` saniyede bir çalıştırır.
+3. Ortak dosya bildirimlerini varsayılan 2 saniyede bir kontrol ederek zamanı gelen cron işlerini çalıştırır; `WP_CRON_INTERVAL` periyodik yedek tetiklemesi korunur. Boşta yapılan kontroller PHP veya WordPress başlatmaz.
+
+
+Mail, Certificates ve Backup içine gömülü ortak kütüphane bağımsız işleri paralel çalıştırır: varsayılan **eklenti başına 3**, **site toplamında en fazla 9 aktif iş**. Coolify ortam değişkenleri panelinden veya Compose `.env` dosyasından `WP_BACKGROUND_WORKERS_PER_PLUGIN` ve `WP_BACKGROUND_MAX_PROCESSES` değiştirildikten sonra worker yeniden oluşturulmalıdır. Bunlar kapasite sınırlarıdır; her sunucunun dokuz ağır işi kaldırdığı anlamına gelmez. Kaynak kilitleri, posta kutusu kotaları ve tek aktif yedek kuralı korunur. Kayıtlı olmayan üçüncü taraf cron işleri mevcut akışında kalır.
+
+Hızlı uyandırma güncel worker imajını ve uyumlu ortak kütüphane paketlerini gerektirir; eski sürümler 60 saniyelik cron ile devam eder. Bildirim dosyaları yalnız zaman damgası içerir; mesaj veya alıcı bilgisi taşımaz. Boş kapasite varsa hazır iş kısa bir kontrol ve WordPress açılış süresi ardından başlayabilir; dolu havuz, ileri tarih, gönderim kotası veya yeniden deneme beklemesi yine gecikme yaratabilir. Docker olmayan normal WordPress kurulumlarında mevcut zamanlayıcı devam eder.
 
 WP-CLI de orada:
 
