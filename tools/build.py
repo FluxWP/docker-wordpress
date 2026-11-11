@@ -71,7 +71,7 @@ MODES = {
         "wp_admin_user": "${WP_ADMIN_USER:-}",
         "wp_admin_password": "${WP_ADMIN_PASSWORD:-}",
         "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
-        "wp_auto_install": "${WP_AUTO_INSTALL:-false}",
+        "wp_auto_install": "${WP_AUTO_INSTALL:-true}",
     },
     "compose": {
         "db_user": "${DB_USER:-wordpress}",
@@ -83,7 +83,7 @@ MODES = {
         "wp_admin_user": "${WP_ADMIN_USER:-admin}",
         "wp_admin_password": "${WP_ADMIN_PASSWORD:-}",
         "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
-        "wp_auto_install": "${WP_AUTO_INSTALL:-false}",
+        "wp_auto_install": "${WP_AUTO_INSTALL:-true}",
     },
 }
 
@@ -127,11 +127,15 @@ def header(mode, name, v):
         lines += [
             "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
             "# Coolify generates a domain for the '" + ("nginx" if v["web"] == "nginx" else "wordpress") + "' service; put your own there if you like, then Deploy.",
-            "# After the first deploy open your domain and create the admin account on the WordPress",
-            "# install screen. Optional: set WP_ADMIN_USER, WP_ADMIN_PASSWORD, WP_ADMIN_EMAIL to install",
-            "# automatically instead.",
-            "# Flux Setup (FluxWP installer + updates) comes installed; its wizard opens after the WordPress",
-            "# install. FLUXWP_SETUP=false leaves it out.",
+            "# The worker installs WordPress on first start (WP_AUTO_INSTALL defaults to true).",
+            "# A generated admin password is not logged. Read it from the worker:",
+            "#   docker compose exec worker cat /run/flx-private/admin-password",
+            "# Change the password after the first login, then delete the file:",
+            "#   docker compose exec worker rm /run/flx-private/admin-password",
+            "# install.php and setup-config.php stay closed unless WP_INSTALL_TOKEN is set.",
+            "# Unset WP_INSTALL_TOKEN after the install is finished; a token in the query string can end up in the Apache access log.",
+            "# Optional: WP_ADMIN_USER, WP_ADMIN_PASSWORD, WP_ADMIN_EMAIL.",
+            "# Flux Setup comes installed; its wizard opens after install. FLUXWP_SETUP=false leaves it out.",
         ]
     else:
         lines += [
@@ -267,6 +271,7 @@ def wordpress_service(mode, v):
     lines += wp_env(mode, v)
     if apache:
         lines.append("APACHE_MAX_WORKERS=${APACHE_MAX_WORKERS:-20}")
+        lines.append("WP_INSTALL_TOKEN=${WP_INSTALL_TOKEN:-}")
     else:
         lines.append("PHP_FPM_MAX_CHILDREN=${PHP_FPM_MAX_CHILDREN:-10}")
     out += env(lines)
@@ -302,9 +307,11 @@ def nginx_service(mode):
         "    volumes:\n"
         "      - 'wordpress-files:/var/www/html:ro'\n"
     )
+    env_lines = ["WP_INSTALL_TOKEN=${WP_INSTALL_TOKEN:-}"]
     if mode == "coolify":
-        out += "    environment:\n" + env(["SERVICE_URL_NGINX"])
-    else:
+        env_lines.insert(0, "SERVICE_URL_NGINX")
+    out += "    environment:\n" + env(env_lines)
+    if mode != "coolify":
         out += "    ports:\n      - '${HTTP_PORT:-8080}:80'\n"
     out += (
         "    depends_on:\n"
@@ -329,6 +336,7 @@ def worker_service(mode, v):
         "    restart: unless-stopped\n"
         "    volumes:\n"
         "      - 'wordpress-files:/var/www/html'\n"
+        "      - 'flx-private:/run/flx-private'\n"
         "    environment:\n"
         + env(wp_env(mode, v) + [
             f"WP_URL={m['wp_url'].replace('WORDPRESS', 'NGINX') if v['web'] == 'nginx' else m['wp_url']}",
@@ -345,6 +353,7 @@ def worker_service(mode, v):
             "WP_BACKGROUND_MAX_PROCESSES=${WP_BACKGROUND_MAX_PROCESSES:-9}",
             "FLUXWP_SETUP=${FLUXWP_SETUP:-true}",
             "FLUXWP_SETUP_URL=${FLUXWP_SETUP_URL:-}",
+            "FLUXWP_SETUP_SHA256=${FLUXWP_SETUP_SHA256:-}",
         ])
         + depends(v, [("wordpress", "service_started")])
         + "    security_opt:\n"
@@ -364,7 +373,7 @@ def build(mode, name, v):
     out += db_service(mode, v)
     if v["redis"]:
         out += redis_service(mode)
-    out += "\nvolumes:\n  wordpress-files:\n"
+    out += "\nvolumes:\n  wordpress-files:\n  flx-private:\n"
     out += f"  {v['db']}-data:\n"
     return out
 
@@ -389,15 +398,21 @@ def env_example(name, v):
         lines += ["", "# Redis object cache", "REDIS_PASSWORD=", "REDIS_MAXMEMORY=128mb"]
     lines += [
         "",
-        "# Automatic install: set WP_ADMIN_EMAIL, or WP_AUTO_INSTALL=true (e-mail admin@<host>).",
-        "# Leave both empty to use the browser install screen.",
-        "# Empty WP_ADMIN_PASSWORD = random password, printed once in `docker compose logs worker`.",
+        "# WordPress installs itself on first start. Empty WP_ADMIN_EMAIL becomes admin@<host>.",
+        "# Empty WP_ADMIN_PASSWORD is written to a file only the worker can read, not the logs:",
+        "#   docker compose exec worker cat /run/flx-private/admin-password",
+        "# Change the password after the first login, then delete the file:",
+        "#   docker compose exec worker rm /run/flx-private/admin-password",
+        "# WP_AUTO_INSTALL=false skips that. The install screen stays closed unless",
+        "# WP_INSTALL_TOKEN is alphanumeric (openssl rand -hex 24).",
+        "# Unset WP_INSTALL_TOKEN after the install is finished; a token in the query string can end up in the Apache access log.",
         "WP_URL=http://localhost:8080",
         "WP_TITLE=WordPress",
         "WP_ADMIN_USER=admin",
         "WP_ADMIN_PASSWORD=",
         "WP_ADMIN_EMAIL=",
-        "WP_AUTO_INSTALL=false",
+        "WP_AUTO_INSTALL=true",
+        "WP_INSTALL_TOKEN=",
         "WP_LOCALE=en_US",
         "WP_TIMEZONE=UTC",
         "",
@@ -405,6 +420,8 @@ def env_example(name, v):
         "FLUXWP_SETUP=true",
         "# Optional custom zip address (default: updater.fluxwp.com, then the GitHub release).",
         "FLUXWP_SETUP_URL=",
+        "# Optional SHA-256 pin for that zip. Empty skips the pin.",
+        "FLUXWP_SETUP_SHA256=",
         "",
         "# PHP",
         "PHP_MEMORY_LIMIT=256M",

@@ -33,9 +33,10 @@ Every stack comes twice:
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. Paste `coolify/<stack>/docker-compose.yml` and **Save**.
 3. Coolify generates a domain for the `wordpress` service (`nginx` for `nginx-fpm`); put your own there if you like.
-4. **Deploy**, open your domain and create the admin account on the WordPress install screen. Do it right after the deploy: until then anyone who finds the domain could finish the install. FluxWP Panel (flx-setup) comes installed, and its setup wizard opens when you first log in.
+4. **Deploy**. The worker installs WordPress on first start (`WP_AUTO_INSTALL` defaults to true). FluxWP Panel (flx-setup) comes installed, and its setup wizard opens when you first log in. If `WP_ADMIN_PASSWORD` is empty, the generated password is not written to the logs. Read it with `docker compose exec worker cat /run/flx-private/admin-password`. Change the password after the first login, then delete the file: `docker compose exec worker rm /run/flx-private/admin-password`.
 5. Optional, in **Environment Variables**:
-   - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: WordPress installs itself with this account on the first deploy and the install screen never shows.
+   - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: use this account instead of a generated password and `admin@<host>`.
+   - `WP_AUTO_INSTALL=false`: do not install from the worker. `/wp-admin/install.php` and `/wp-admin/setup-config.php` stay closed unless you also set `WP_INSTALL_TOKEN` (alphanumeric, for example `openssl rand -hex 24`). Open `/wp-admin/install.php?wp_install_token=...` once; the query string is stored in the web server access log, so prefer the `X-WP-Install-Token` header for anything but that first browser visit. Unset `WP_INSTALL_TOKEN` after the install is finished, because a token passed in the query string can end up in the Apache access log.
    - `FLUXWP_SETUP=false`: leaves FluxWP Panel (flx-setup) out.
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limits (see below). Redeploy after changing them.
 
@@ -62,7 +63,17 @@ docker compose up -d
 
 The site listens on `http://localhost:8080` (`HTTP_PORT`). For production, put a reverse proxy with HTTPS in front (Caddy, Traefik, nginx). WordPress detects HTTPS from `X-Forwarded-Proto`, and the real visitor IP is read from `X-Forwarded-For` when the proxy is on a private network.
 
-Set `WP_URL` + `WP_ADMIN_EMAIL` to install automatically. With an empty `WP_ADMIN_PASSWORD`, a random password is printed once in `docker compose logs worker`.
+`WP_AUTO_INSTALL` defaults to true. With `WP_URL` set, the first start installs WordPress. An empty `WP_ADMIN_PASSWORD` is saved only in `/run/flx-private/admin-password` (mode 0600, worker only):
+
+```bash
+docker compose exec worker cat /run/flx-private/admin-password
+```
+
+Change the password after the first login, then delete the file:
+
+```bash
+docker compose exec worker rm /run/flx-private/admin-password
+```
 
 ## Images
 
@@ -89,7 +100,7 @@ To change a file without building your own image, mount yours over it, for examp
 | Healthcheck loads the home page every 2 s (PHP + DB on every probe) | Static file (Apache) or FPM ping through nginx every 15 s, with `start_period` |
 | `depends_on` without condition | Waits for a healthy database and Redis |
 | WP-Cron on page loads | `DISABLE_WP_CRON` + worker container runs due events every 60 s, so cron also runs on quiet sites |
-| Install screen open after deploy | Optional automatic install with generated admin credentials |
+| Install screen open after deploy | Install screen closed. Automatic install by default. Generated admin password in a file only the worker can read |
 | MariaDB defaults | utf8mb4, 256 MB buffer pool, `skip-name-resolve`, performance schema off (~100-400 MB RAM saved), `MARIADB_AUTO_UPGRADE` |
 | - | PHP 8.4.27+ (PHP2Shell, CVE-2026-109618/109619, fixed) and `session.upload_progress` off (its confirmed exploit path) |
 | - | `DISALLOW_FILE_EDIT`, `no-new-privileges`, no DB/Redis ports published, server tokens hidden, `wp-config.php`/`readme.html`/PHP in uploads blocked, real client IP behind the proxy |
@@ -111,12 +122,14 @@ All optional. In Coolify they are environment variables, with Compose they go in
 | `DB_BUFFER_POOL_SIZE` | `256M` | ~50% of the RAM you give the database |
 | `DB_MAX_CONNECTIONS` | `100` | |
 | `REDIS_MAXMEMORY` | `128mb` | Cache only, no persistence, LRU eviction |
-| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Automatic install (Coolify fills the URL) |
-| `WP_AUTO_INSTALL` | `false` | Install without `WP_ADMIN_EMAIL` (e-mail `admin@<host>`) |
+| `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Automatic install (Coolify fills the URL). Empty password is generated |
+| `WP_AUTO_INSTALL` | `true` | Install on first start without `WP_ADMIN_EMAIL` (e-mail `admin@<host>`). `false` skips the worker install |
+| `WP_INSTALL_TOKEN` | | Alphanumeric token (max 128) that opens `/wp-admin/install.php` and `/wp-admin/setup-config.php`. Empty keeps them closed. Unset it after the install is finished, because a token passed in the query string can end up in the Apache access log |
 | `WP_LOCALE` | `en_US` | Language installed on first setup, e.g. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | Site timezone on first setup |
 | `FLUXWP_SETUP` | `true` | Installs FluxWP Panel (flx-setup) and opens its wizard on the first wp-admin visit; `false` leaves it out |
-| `FLUXWP_SETUP_URL` | | Custom zip; default is `updater.fluxwp.com`, then the GitHub release |
+| `FLUXWP_SETUP_URL` | | Custom zip; must be `https`. Default is `updater.fluxwp.com`, then the GitHub release |
+| `FLUXWP_SETUP_SHA256` | | Optional SHA-256 pin for the Flux Setup zip. Empty skips the pin |
 | `WP_CRON_INTERVAL` | `60` | Periodic cron fallback after each pass |
 | `WP_BACKGROUND_POLL_INTERVAL` | `2` | Seconds between lightweight shared-file wake checks; no PHP boot while idle |
 | `WP_BACKGROUND_WORKERS_PER_PLUGIN` | `3` | Concurrent registered Flux background batches per plugin |
@@ -131,7 +144,7 @@ Anything else: `WORDPRESS_CONFIG_EXTRA` (PHP appended to `wp-config.php`; keep t
 `worker` runs `wordpress:cli` and does three things, all safe to repeat:
 
 1. Waits for the WordPress files and the database.
-2. On first start: installs WordPress (when `WP_ADMIN_EMAIL` or `WP_AUTO_INSTALL=true` is set), the language, the Redis Object Cache plugin and its drop-in (Redis stacks), and FluxWP Panel (`FLUXWP_SETUP`, on by default). FluxWP Panel is downloaded before the install screen is used, so it is active as soon as WordPress is installed, and the first wp-admin visit opens its setup wizard. Language and FluxWP Panel are done once, so later changes in wp-admin stay.
+2. On first start: installs WordPress (`WP_AUTO_INSTALL` defaults to true; set `WP_ADMIN_EMAIL` to choose the address, otherwise `admin@<host>`), the language, the Redis Object Cache plugin and its drop-in (Redis stacks), and FluxWP Panel (`FLUXWP_SETUP`, on by default). The zip is downloaded over HTTPS, size-capped, and installed only if it contains `flx-setup/flx-setup.php` and no escaping paths. It is active as soon as WordPress is installed, and the first wp-admin visit opens its setup wizard. Language and FluxWP Panel are done once, so later changes in wp-admin stay. A generated admin password is stored at `/run/flx-private/admin-password` (mode `0600`, only the worker can read it), not in the logs. Read it with `docker compose exec worker cat /run/flx-private/admin-password`. Change the password after the first login, then delete the file: `docker compose exec worker rm /run/flx-private/admin-password`.
 3. Runs due WP-Cron events on shared-volume wake signals (checked every 2 seconds by default), while retaining the `WP_CRON_INTERVAL` periodic fallback. Idle checks do not start PHP or WordPress.
 
 
