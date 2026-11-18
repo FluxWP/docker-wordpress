@@ -96,7 +96,7 @@ Kendi imajını build etmeden bir dosyayı değiştirmek için kendi dosyanı ü
 |---|---|
 | `wordpress:latest`, `mariadb:11` | Sabit: `wordpress:7.1-php8.4-*`, `mariadb:11.8`, `mysql:8.4`, `redis:8.8-alpine`, `nginx:1.30-alpine`. Yama sürümleri pull ile gelir, büyük/küçük sürüm geçişi senin kararın. |
 | PHP varsayılanları (2 MB yükleme, 128 MB bellek) | 128 MB yükleme, 256 MB bellek, 300 sn çalışma süresi, 5000 input var; hepsi env'den |
-| İmaj varsayılanı OPcache | 192 MB, 30 bin dosya, 32 MB interned strings, JIT kapalı (WordPress'e faydası yok) |
+| İmaj varsayılanı OPcache | 256 MB, 30 bin dosya, 32 MB interned strings, JIT kapalı (WordPress'e faydası yok) |
 | Healthcheck her 2 sn'de ana sayfayı açıyor (her yoklamada PHP + DB) | 15 sn'de bir statik dosya (Apache) ya da nginx üzerinden FPM ping, `start_period` ile |
 | Koşulsuz `depends_on` | Veritabanı ve Redis sağlıklı olana kadar bekler |
 | Sayfa açılışında WP-Cron | `DISABLE_WP_CRON` + worker 60 sn'de bir zamanı gelen görevleri çalıştırır; trafiksiz sitede de cron işler |
@@ -115,7 +115,7 @@ Hepsi isteğe bağlı. Coolify'da environment variable, Compose'da `.env` içine
 | `PHP_UPLOAD_MAX_FILESIZE` | `128M` | Tek dosyada en büyük yükleme |
 | `PHP_POST_MAX_SIZE` | `128M` | Yükleme boyutundan küçük olmasın |
 | `PHP_MAX_EXECUTION_TIME` | `300` | Saniye |
-| `PHP_OPCACHE_MEMORY` | `192` | MB |
+| `PHP_OPCACHE_MEMORY` | `256` | MB |
 | `PHP_TIMEZONE` | `UTC` | PHP `date.timezone` |
 | `APACHE_MAX_WORKERS` | `20` | Apache yığınları: en çok süreç (her biri ~64 MB) |
 | `PHP_FPM_MAX_CHILDREN` | `10` | nginx-fpm: en çok PHP worker (her biri ~64 MB, en az 4) |
