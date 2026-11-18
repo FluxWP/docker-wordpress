@@ -105,7 +105,7 @@ def wp_env(mode, v):
         "PHP_UPLOAD_MAX_FILESIZE=${PHP_UPLOAD_MAX_FILESIZE:-128M}",
         "PHP_POST_MAX_SIZE=${PHP_POST_MAX_SIZE:-128M}",
         "PHP_MAX_EXECUTION_TIME=${PHP_MAX_EXECUTION_TIME:-300}",
-        "PHP_OPCACHE_MEMORY=${PHP_OPCACHE_MEMORY:-192}",
+        "PHP_OPCACHE_MEMORY=${PHP_OPCACHE_MEMORY:-256}",
         "PHP_TIMEZONE=${PHP_TIMEZONE:-UTC}",
         "WP_ENVIRONMENT_TYPE=${WP_ENVIRONMENT_TYPE:-production}",
     ]
@@ -428,7 +428,7 @@ def env_example(name, v):
         "PHP_UPLOAD_MAX_FILESIZE=128M",
         "PHP_POST_MAX_SIZE=128M",
         "PHP_MAX_EXECUTION_TIME=300",
-        "PHP_OPCACHE_MEMORY=192",
+        "PHP_OPCACHE_MEMORY=256",
         "PHP_TIMEZONE=UTC",
     ]
     if v["web"] == "apache":

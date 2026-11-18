@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026.11.18.1
+
+- OPcache default raised from 192 MB to 256 MB (`PHP_OPCACHE_MEMORY`), same as the FluxWP monorepo `docker/`. A FluxWP site with WooCommerce and the Flux packages fills ~155 MB after one pass over its screens.
+
 ## 2026.11.10.2
 
 - Close `/wp-admin/install.php` and `/wp-admin/setup-config.php` unless `WP_INSTALL_TOKEN` is presented. `WP_AUTO_INSTALL` now defaults to true.

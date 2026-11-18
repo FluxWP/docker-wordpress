@@ -96,7 +96,7 @@ To change a file without building your own image, mount yours over it, for examp
 |---|---|
 | `wordpress:latest`, `mariadb:11` | Pinned: `wordpress:7.1-php8.4-*`, `mariadb:11.8`, `mysql:8.4`, `redis:8.8-alpine`, `nginx:1.30-alpine`. Patch updates arrive on pull, major/minor upgrades are your decision. |
 | PHP defaults (2 MB uploads, 128 MB memory) | 128 MB uploads, 256 MB memory, 300 s execution, 5000 input vars, all from env |
-| OPcache with image defaults | 192 MB, 30k files, 32 MB interned strings, JIT off (no gain for WordPress) |
+| OPcache with image defaults | 256 MB, 30k files, 32 MB interned strings, JIT off (no gain for WordPress) |
 | Healthcheck loads the home page every 2 s (PHP + DB on every probe) | Static file (Apache) or FPM ping through nginx every 15 s, with `start_period` |
 | `depends_on` without condition | Waits for a healthy database and Redis |
 | WP-Cron on page loads | `DISABLE_WP_CRON` + worker container runs due events every 60 s, so cron also runs on quiet sites |
@@ -115,7 +115,7 @@ All optional. In Coolify they are environment variables, with Compose they go in
 | `PHP_UPLOAD_MAX_FILESIZE` | `128M` | Largest single upload |
 | `PHP_POST_MAX_SIZE` | `128M` | Keep ≥ upload size |
 | `PHP_MAX_EXECUTION_TIME` | `300` | Seconds |
-| `PHP_OPCACHE_MEMORY` | `192` | MB |
+| `PHP_OPCACHE_MEMORY` | `256` | MB |
 | `PHP_TIMEZONE` | `UTC` | PHP `date.timezone` |
 | `APACHE_MAX_WORKERS` | `20` | Apache stacks: max processes (~64 MB each) |
 | `PHP_FPM_MAX_CHILDREN` | `10` | nginx-fpm: max PHP workers (~64 MB each, keep ≥ 4) |
