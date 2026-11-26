@@ -66,7 +66,7 @@ function flx_setup_download(string $url, string $dest): void {
 				'follow_location' => 0,
 				'max_redirects' => 0,
 				'ignore_errors' => true,
-				'header' => "User-Agent: fluxwp-docker-wordpress\r\nAccept: application/octet-stream\r\n",
+				'header' => "User-Agent: fluxwp-docker\r\nAccept: application/octet-stream\r\n",
 			],
 			'ssl' => [
 				'verify_peer' => true,
@@ -293,7 +293,7 @@ function flx_setup_github_url(): string {
 			'follow_location' => 0,
 			'max_redirects' => 0,
 			'ignore_errors' => true,
-			'header' => "User-Agent: fluxwp-docker-wordpress\r\nAccept: application/vnd.github+json\r\n",
+			'header' => "User-Agent: fluxwp-docker\r\nAccept: application/vnd.github+json\r\n",
 		],
 	]);
 	$body = @file_get_contents('https://api.github.com/repos/FluxWP/FluxWP/releases?per_page=100', false, $context);

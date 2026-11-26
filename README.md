@@ -2,7 +2,7 @@
 
 **English** · [Türkçe](README.tr.md)
 
-# FluxWP docker-wordpress
+# FluxWP Docker
 
 Production-ready WordPress stacks for **Coolify** and plain **Docker Compose**: tuned PHP and OPcache, real upload limits, healthchecks, pinned images, WP-Cron in a worker, optional Redis object cache, and one-switch install of the FluxWP Panel.
 
@@ -16,8 +16,9 @@ Production-ready WordPress stacks for **Coolify** and plain **Docker Compose**: 
 |---|---|---|---|---|
 | `mariadb` | Apache + mod_php | MariaDB 11.8 LTS | none | Small sites, closest to the stock Coolify template |
 | `mysql` | Apache + mod_php | MySQL 8.4 LTS | none | Hosts or tools that expect MySQL |
-| `mariadb-redis` (default) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin. Also `docker-compose.yml` in the repository root (Coolify) |
+| `mariadb-redis` (default) | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | WooCommerce, membership, busy admin. Also at the root: `docker-compose.yml` (Coolify) and `docker-compose.local.yml` + `.env.example` (plain Docker) |
 | `nginx-fpm` | nginx 1.30 + PHP-FPM | MariaDB 11.8 LTS | Redis 8.8 | Most traffic per GB of RAM |
+| `wpapi` | Apache + mod_php | MariaDB 11.8 LTS | Redis 8.8 | Same as `mariadb-redis` plus the WhatsApp API (flx-wpapi) in the same compose, already connected to WordPress. See [WordPress + WhatsApp API](#wordpress--whatsapp-api) |
 
 Every stack comes twice:
 
@@ -26,17 +27,21 @@ Every stack comes twice:
 
 ## Coolify
 
-**From this repository (default stack):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, build pack **Docker Compose**. Coolify reads `/docker-compose.yml` (MariaDB + Redis) and generates a domain. Deploy.
+**From Git (default stack):** **Projects › Add Resource › Public Repository** › `https://github.com/FluxWP/docker-wordpress`, branch `main`, build pack **Docker Compose**, **Base Directory** `/`, **Docker Compose Location** `/docker-compose.yml`. Coolify reads `docker-compose.yml` (MariaDB + Redis) and generates a domain. This repository only changes when the Docker stack changes, so plugin and theme releases in FluxWP/FluxWP never redeploy your site. For a stricter setup, turn **Automatic Deployment** off and press Deploy yourself. Deploy.
+
+For another stack from Git, set **Docker Compose Location** to `/coolify/<stack>/docker-compose.yml` (for example `/coolify/wpapi/docker-compose.yml`). Do not point Coolify at `compose/<stack>/`: those files are for plain Docker, have no `SERVICE_URL_*` variable, so Coolify finds no domain and no generated secrets.
+
+> These stacks briefly lived in `FluxWP/FluxWP` under `docker/`. They are back here so plugin and theme updates do not redeploy Docker sites. The images (`ghcr.io/fluxwp/wordpress:*`) and their tags did not change; for an existing Coolify app pointing at the monorepo, only the repository, Base Directory (`/`) and Watch Paths (clear it) change.
 
 **Another stack, or without Git:**
 
 1. **Projects › Add Resource › Docker Compose Empty**.
 2. Paste `coolify/<stack>/docker-compose.yml` and **Save**.
 3. Coolify generates a domain for the `wordpress` service (`nginx` for `nginx-fpm`); put your own there if you like.
-4. **Deploy**. The worker installs WordPress on first start (`WP_AUTO_INSTALL` defaults to true). FluxWP Panel (flx-setup) comes installed, and its setup wizard opens when you first log in. If `WP_ADMIN_PASSWORD` is empty, the generated password is not written to the logs. Read it with `docker compose exec worker cat /run/flx-private/admin-password`. Change the password after the first login, then delete the file: `docker compose exec worker rm /run/flx-private/admin-password`.
+4. **Deploy**. Open the domain: WordPress's own install screen asks for language, site name and admin (`WP_AUTO_INSTALL` defaults to false). Set `WP_AUTO_INSTALL=true` to have the worker install unattended instead. FluxWP Panel (flx-setup) comes installed, and its setup wizard opens when you first log in. If `WP_ADMIN_PASSWORD` is empty, the generated password is not written to the logs. Read it with `docker compose exec worker cat /run/flx-private/admin-password`. Change the password after the first login, then delete the file: `docker compose exec worker rm /run/flx-private/admin-password`.
 5. Optional, in **Environment Variables**:
    - `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL`: use this account instead of a generated password and `admin@<host>`.
-   - `WP_AUTO_INSTALL=false`: do not install from the worker. `/wp-admin/install.php` and `/wp-admin/setup-config.php` stay closed unless you also set `WP_INSTALL_TOKEN` (alphanumeric, for example `openssl rand -hex 24`). Open `/wp-admin/install.php?wp_install_token=...` once; the query string is stored in the web server access log, so prefer the `X-WP-Install-Token` header for anything but that first browser visit. Unset `WP_INSTALL_TOKEN` after the install is finished, because a token passed in the query string can end up in the Apache access log.
+   - `WP_AUTO_INSTALL=true`: the worker installs, and `/wp-admin/install.php` and `/wp-admin/setup-config.php` stay closed unless you also set `WP_INSTALL_TOKEN` (alphanumeric, for example `openssl rand -hex 24`). Open `/wp-admin/install.php?wp_install_token=...` once; the query string is stored in the web server access log, so prefer the `X-WP-Install-Token` header for anything but that first browser visit. Unset `WP_INSTALL_TOKEN` after the install is finished, because a token passed in the query string can end up in the Apache access log.
    - `FLUXWP_SETUP=false`: leaves FluxWP Panel (flx-setup) out.
    - `WP_LOCALE=tr_TR`, `WP_TIMEZONE=Europe/Istanbul`, `WP_TITLE`, PHP limits (see below). Redeploy after changing them.
 
@@ -45,17 +50,17 @@ Every stack comes twice:
 Quick start with the default stack (`mariadb-redis`):
 
 ```bash
-git clone https://github.com/FluxWP/docker-wordpress.git
-cd docker-wordpress/compose/mariadb-redis
+git clone --depth 1 https://github.com/FluxWP/docker-wordpress.git fluxwp
+cd fluxwp
 cp .env.example .env
 # set DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD: openssl rand -base64 24
-docker compose up -d
+docker compose -f docker-compose.local.yml up -d
 ```
 
 Another stack:
 
 ```bash
-cd docker-wordpress/compose/mariadb        # or mysql, mariadb-redis, nginx-fpm
+cd fluxwp/compose/mariadb        # or mysql, mariadb-redis, nginx-fpm
 cp .env.example .env
 # set DB_PASSWORD, DB_ROOT_PASSWORD (and REDIS_PASSWORD): openssl rand -base64 24
 docker compose up -d
@@ -63,7 +68,7 @@ docker compose up -d
 
 The site listens on `http://localhost:8080` (`HTTP_PORT`). For production, put a reverse proxy with HTTPS in front (Caddy, Traefik, nginx). WordPress detects HTTPS from `X-Forwarded-Proto`, and the real visitor IP is read from `X-Forwarded-For` when the proxy is on a private network.
 
-`WP_AUTO_INSTALL` defaults to true. With `WP_URL` set, the first start installs WordPress. An empty `WP_ADMIN_PASSWORD` is saved only in `/run/flx-private/admin-password` (mode 0600, worker only):
+`WP_AUTO_INSTALL` defaults to false (WordPress's own install screen). With `WP_AUTO_INSTALL=true` and `WP_URL` set, the first start installs WordPress. An empty `WP_ADMIN_PASSWORD` is saved only in `/run/flx-private/admin-password` (mode 0600, worker only):
 
 ```bash
 docker compose exec worker cat /run/flx-private/admin-password
@@ -75,6 +80,25 @@ Change the password after the first login, then delete the file:
 docker compose exec worker rm /run/flx-private/admin-password
 ```
 
+## WordPress + WhatsApp API
+
+The `wpapi` stack is `mariadb-redis` plus [FluxWP WhatsApp API](https://github.com/FluxWP/whatsapp-api) (flx-wpapi, an Evolution API v2 compatible WhatsApp bridge) as a `wpapi` service. The other stacks are unchanged; use this one only when you want WhatsApp on the same server.
+
+- **One shared key.** `WPAPI_KEY` is the only secret you set. The `wpapi` container reads it as `FLXW_API_KEY`, WordPress gets it as `WPAPI_KEY`. Coolify generates it; with plain Docker run `openssl rand -hex 32`.
+- **Internal network.** WordPress talks to `http://wpapi:3000`. The service publishes no port, so nothing from outside can reach it. `FLXW_ALLOW_PRIVATE_URLS=1` lets it call WordPress back for webhooks and media on the Docker network.
+- **No manual connection.** When Flux Mail is active, the FluxWP Docker mu-plugin adds a WhatsApp connection (type Flux WPAPI) with that address, key and instance name (`WPAPI_INSTANCE`, default `main`). If you change the key or the address, the connection is updated on the next request.
+- **Same database.** The bridge keeps its data in the stack's MariaDB (tables `flxw_*`) and its settings in the `wpapi-data` volume. Pairing a number: Flux Mail › Connections › the WhatsApp connection › add account › scan the QR (WhatsApp › Linked devices).
+- Optional: `WPAPI_MSG_KEEP_DAYS` (message history, default 45) and `WPAPI_PANEL=on` for the fallback panel (publish a port or proxy it yourself; first login needs the setup token from `docker compose logs wpapi`).
+
+```bash
+cd compose/wpapi
+cp .env.example .env
+# set DB_PASSWORD, DB_ROOT_PASSWORD, REDIS_PASSWORD, WPAPI_KEY
+docker compose up -d
+```
+
+Coolify: paste `coolify/wpapi/docker-compose.yml` into **Docker Compose Empty**. The image is `ghcr.io/fluxwp/wordpress:wpapi-node22` (built from `FluxWP/whatsapp-api` `main`, rebuilt daily). Baileys uses the unofficial WhatsApp Web protocol, so use a number you can afford to lose and avoid bulk messages.
+
 ## Images
 
 The settings live in our images, so the compose files only hold services and environment variables:
@@ -85,6 +109,8 @@ The settings live in our images, so the compose files only hold services and env
 | `ghcr.io/fluxwp/wordpress:7.1-php8.4-fpm` | `wordpress:7.1-php8.4-fpm` | Same, plus the PHP-FPM pool |
 | `ghcr.io/fluxwp/wordpress:worker-php8.4` | `wordpress:cli-2.12-php8.4` | The worker script |
 | `ghcr.io/fluxwp/wordpress:nginx-1.30` | `nginx:1.30-alpine` | nginx config for WordPress |
+| `ghcr.io/fluxwp/wordpress:wpapi-node22` | `node:22-alpine` | FluxWP WhatsApp API (flx-wpapi) |
+| `ghcr.io/fluxwp/wordpress:realtime-bun1.4` | `oven/bun:1.4-alpine` | FluxWP Realtime WebSocket server |
 
 They are built for amd64 and arm64 and rebuilt every day, so security fixes in PHP and the base OS reach you on the next pull. Each build also gets a dated tag (`7.1-php8.4-apache-20261105`) if you want to pin one. The build fails on a PHP release with known critical vulnerabilities.
 
@@ -123,8 +149,9 @@ All optional. In Coolify they are environment variables, with Compose they go in
 | `DB_MAX_CONNECTIONS` | `100` | |
 | `REDIS_MAXMEMORY` | `128mb` | Cache only, no persistence, LRU eviction |
 | `WP_URL`, `WP_TITLE`, `WP_ADMIN_USER`, `WP_ADMIN_PASSWORD`, `WP_ADMIN_EMAIL` | | Automatic install (Coolify fills the URL). Empty password is generated |
-| `WP_AUTO_INSTALL` | `true` | Install on first start without `WP_ADMIN_EMAIL` (e-mail `admin@<host>`). `false` skips the worker install |
-| `WP_INSTALL_TOKEN` | | Alphanumeric token (max 128) that opens `/wp-admin/install.php` and `/wp-admin/setup-config.php`. Empty keeps them closed. Unset it after the install is finished, because a token passed in the query string can end up in the Apache access log |
+| `WP_URL_SYNC` | `true` | The worker makes the database follow `WP_URL` when the domain changes (see [Changing the domain](#changing-the-domain)). `false` turns it off |
+| `WP_AUTO_INSTALL` | `false` | `true`: install on first start without `WP_ADMIN_EMAIL` (e-mail `admin@<host>`) and close the install screen. `false`: use WordPress's own install screen |
+| `WP_INSTALL_TOKEN` | | Alphanumeric token (max 128) that opens `/wp-admin/install.php` and `/wp-admin/setup-config.php`. Only matters with `WP_AUTO_INSTALL=true`; empty keeps them closed then. Unset it after the install is finished, because a token passed in the query string can end up in the Apache access log |
 | `WP_LOCALE` | `en_US` | Language installed on first setup, e.g. `tr_TR` |
 | `WP_TIMEZONE` | `UTC` | Site timezone on first setup |
 | `FLUXWP_SETUP` | `true` | Installs FluxWP Panel (flx-setup) and opens its wizard on the first wp-admin visit; `false` leaves it out |
@@ -141,11 +168,12 @@ Anything else: `WORDPRESS_CONFIG_EXTRA` (PHP appended to `wp-config.php`; keep t
 
 ## The worker
 
-`worker` runs `wordpress:cli` and does three things, all safe to repeat:
+`worker` runs `wordpress:cli` and does four things, all safe to repeat:
 
 1. Waits for the WordPress files and the database.
-2. On first start: installs WordPress (`WP_AUTO_INSTALL` defaults to true; set `WP_ADMIN_EMAIL` to choose the address, otherwise `admin@<host>`), the language, the Redis Object Cache plugin and its drop-in (Redis stacks), and FluxWP Panel (`FLUXWP_SETUP`, on by default). The zip is downloaded over HTTPS, size-capped, and installed only if it contains `flx-setup/flx-setup.php` and no escaping paths. It is active as soon as WordPress is installed, and the first wp-admin visit opens its setup wizard. Language and FluxWP Panel are done once, so later changes in wp-admin stay. A generated admin password is stored at `/run/flx-private/admin-password` (mode `0600`, only the worker can read it), not in the logs. Read it with `docker compose exec worker cat /run/flx-private/admin-password`. Change the password after the first login, then delete the file: `docker compose exec worker rm /run/flx-private/admin-password`.
-3. Runs due WP-Cron events on shared-volume wake signals (checked every 2 seconds by default), while retaining the `WP_CRON_INTERVAL` periodic fallback. Idle checks do not start PHP or WordPress.
+2. On first start: installs WordPress when `WP_AUTO_INSTALL=true` (default false, WordPress's own install screen; set `WP_ADMIN_EMAIL` to choose the address, otherwise `admin@<host>`), the language, the Redis Object Cache plugin and its drop-in (Redis stacks), and FluxWP Panel (`FLUXWP_SETUP`, on by default). The zip is downloaded over HTTPS, size-capped, and installed only if it contains `flx-setup/flx-setup.php` and no escaping paths. It is active as soon as WordPress is installed, and the first wp-admin visit opens its setup wizard. Language and FluxWP Panel are done once, so later changes in wp-admin stay. A generated admin password is stored at `/run/flx-private/admin-password` (mode `0600`, only the worker can read it), not in the logs. Read it with `docker compose exec worker cat /run/flx-private/admin-password`. Change the password after the first login, then delete the file: `docker compose exec worker rm /run/flx-private/admin-password`.
+3. Follows a domain change: when `WP_URL` (Coolify's domain) differs from the address stored in WordPress, it updates `home`/`siteurl` and replaces the old address in the database once. See [Changing the domain](#changing-the-domain).
+4. Runs due WP-Cron events on shared-volume wake signals (checked every 2 seconds by default), while retaining the `WP_CRON_INTERVAL` periodic fallback. Idle checks do not start PHP or WordPress.
 
 
 The shared library bundled in Flux Mail, Certificates and Backup runs independent jobs concurrently: default **3 per plugin**, with a **9-job site-wide ceiling**. Change `WP_BACKGROUND_WORKERS_PER_PLUGIN` and `WP_BACKGROUND_MAX_PROCESSES` in the Coolify Environment Variables panel or Compose `.env`, then recreate the worker. These are capacity controls, not a claim that every server can sustain nine heavy jobs. Resource locks, mailbox quotas and the single-backup rule still apply. Unregistered third-party cron handlers keep their normal execution path.
@@ -161,6 +189,19 @@ docker compose exec worker wp search-replace 'http://old.test' 'https://new.exam
 
 `wp db cli/export/import` use the MariaDB client of the cli image; on the `mysql` stack use the `mysql` container instead (see below).
 
+## Realtime (live updates)
+
+Stacks with Redis (`mariadb-redis`, `nginx-fpm`, `wpapi`) have a small `realtime` service (~25 MB RAM). WordPress publishes short "this changed" signals to Redis; the realtime service passes them over WebSocket to the signed-in FluxWP panel and FluxApp, so inboxes, badges and notifications update at once instead of on the next poll. Signals carry no content: clients load the data from WordPress as before, with the same permissions.
+
+It is optional. If the service is down or removed, or the secret is empty, clients keep polling; nothing else depends on it.
+
+- **Coolify:** nothing to set. The secret is generated (`SERVICE_PASSWORD_64_REALTIME`) and the service answers on the site's own domain at `/flx-rt`. If you change the WordPress domain on an Apache stack, set the `realtime` service's domain to `https://<domain>/flx-rt` too. On `nginx-fpm`, nginx serves `/flx-rt` itself.
+- **Plain Docker:** set `FLX_REALTIME_SECRET` (`openssl rand -hex 32`). `nginx-fpm` serves `/flx-rt` itself. On the Apache stacks, route `/flx-rt` (WebSocket) in your reverse proxy to `127.0.0.1:${REALTIME_PORT:-8081}` and set `FLX_REALTIME_URL=/flx-rt`.
+- **Check:** `docker compose exec worker wp flx realtime status` and `wp flx realtime test` (WordPress → Redis → realtime).
+- Sign-in: clients get a 60 second, single-use ticket from WordPress and send it as the first WebSocket message (never in the URL). Logging out, role and password changes close the user's sockets.
+- For package authors: the mu-plugin `flx-realtime.php` has `flx_realtime_publish()`, `flx_realtime_online()` and the `flx_realtime_topics` filter; see its header.
+- **Visitors (signed out):** the same server also serves site visitors, with tickets that carry only the topics WordPress listed (no user, no capabilities, `RT_MAX_VISITORS` sockets at once, default 300). `flx_realtime_visitor_ticket( array( 'chatbot.conv.42' ) )` after you authenticated the visitor yourself, and `flx_realtime_publish( $topic, $data, array( 'topic' => $topic ) )` to reach exactly those sockets. Public topics (`public.*`, e.g. a live donation total) are listed with the `flx_realtime_public_topics` filter; anyone may then fetch a ticket from `POST /wp-json/flx-realtime/v1/public-ticket` `{ "topics": [...] }` (30 per minute per address). Public payloads must be fit for everyone to read. The Flux AI Chatbot widget uses this to show replies at once.
+
 ## Backup and restore
 
 ```bash
@@ -175,10 +216,49 @@ docker compose exec worker tar -C /var/www/html -czf - wp-content > wp-content.t
 
 Coolify can also back up the database service on a schedule.
 
+## Changing the domain
+
+Change the domain in Coolify (or `WP_URL` in `.env`) and redeploy. Nothing else is needed: when the worker starts it compares `WP_URL` with the `home`/`siteurl` stored in WordPress. If they differ it
+
+1. logs `site address changed: <old> -> <new>`,
+2. replaces the old address with the new one in every table with `wp search-replace` (serialized data stays valid, the `guid` column is skipped, JSON-escaped copies in block content are included),
+3. flushes the object cache and stores the new address in the `flx_docker_url` option, so it runs once per change.
+
+Follow it with `docker compose logs worker` (Coolify: the worker service logs). A change made by hand in wp-admin is not undone on later restarts, because the worker only reacts when `WP_URL` itself changes. Set `WP_URL_SYNC=false` to turn this off. A `WP_URL` with a path (`https://example.com/blog`) is not synced; use the manual steps.
+
+If the site still redirects to the old domain, check, in this order:
+
+- `docker compose logs worker` shows no `site address sync failed`.
+- `WP_HOME` / `WP_SITEURL` in `WORDPRESS_CONFIG_EXTRA` or `wp-config.php` override the database. The worker warns about them; remove or update them.
+- A redirect or caching plugin still stores the old address. Purge its cache.
+- Cloudflare or another proxy points at the new domain and its SSL mode is Full (strict).
+
+Manual fix. The cli image already has WP-CLI, so use the worker:
+
+```bash
+docker compose exec worker wp option update home 'https://new.example'
+docker compose exec worker wp option update siteurl 'https://new.example'
+docker compose exec worker wp search-replace 'https://old.example' 'https://new.example' --all-tables --skip-columns=guid
+docker compose exec worker wp cache flush
+```
+
+In Coolify open the `worker` service's Terminal instead of `docker compose exec worker`. If you are inside the `wordpress` container, it has no WP-CLI (`wp: command not found`). Download it once, it lives only until the next redeploy:
+
+```bash
+cd /tmp
+curl -fsSLO https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+php wp-cli.phar --allow-root --path=/var/www/html option update home 'https://new.example'
+php wp-cli.phar --allow-root --path=/var/www/html option update siteurl 'https://new.example'
+php wp-cli.phar --allow-root --path=/var/www/html search-replace 'https://old.example' 'https://new.example' --all-tables --skip-columns=guid
+php wp-cli.phar --allow-root --path=/var/www/html cache flush
+```
+
+Take a database backup first (above). Add `--dry-run` to the `search-replace` to see the counts before changing anything.
+
 ## Upgrades
 
 - **WordPress core, plugins, themes**: from wp-admin as usual (minor core updates are automatic). The image tag only sets the PHP version and the files of a fresh install.
-- **Images**: redeploy (Coolify) or `docker compose pull && docker compose up -d` to get the latest daily build. New PHP or WordPress branches come as new tags in a new release of this repository.
+- **Images**: redeploy (Coolify) or `docker compose pull && docker compose up -d` to get the latest daily build. New PHP or WordPress branches come as new tags.
 - **MariaDB**: `MARIADB_AUTO_UPGRADE=1` runs the upgrade step when you move to a newer tag. Take a backup first.
 
 ## Development
@@ -192,11 +272,11 @@ python3 tools/build.py --check  # what CI runs
 docker build -f images/wordpress/Dockerfile --build-arg BASE=wordpress:7.1-php8.4-apache -t ghcr.io/fluxwp/wordpress:7.1-php8.4-apache .
 ```
 
-Edit the sources, never the generated compose files. CI builds the images from the pull request and runs every stack.
+Run these from the repository root. Edit the sources, never the generated compose files. CI (`.github/workflows/validate.yml`) builds the images from the pull request and runs every stack; `.github/workflows/images.yml` publishes `ghcr.io/fluxwp/wordpress` (amd64 + arm64) on every push to `main` that touches the images, config or scripts, and daily for upstream security fixes.
 
 ## Maintainers
 
-FluxWP docker-wordpress is led and maintained by **Ahmet Yılmaz** ([@sharkpaw](https://github.com/sharkpaw)).
+FluxWP Docker is led and maintained by **Ahmet Yılmaz** ([@sharkpaw](https://github.com/sharkpaw)).
 
 <table><tr><td align="center"><a href="https://github.com/sharkpaw"><img src="https://github.com/sharkpaw.png?size=120" width="64" alt="Ahmet Yılmaz"><br><b>Ahmet Yılmaz</b></a><br><sub>Project lead · Maintainer</sub></td></tr></table>
 

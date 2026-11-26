@@ -14,4 +14,9 @@ if [ -n "$token" ]; then
 		exit 1
 	fi
 fi
+# Used inside a quoted nginx string: anything but letters and digits counts as "not true".
+case "${WP_AUTO_INSTALL-}" in
+	*[!A-Za-z0-9]*) WP_AUTO_INSTALL=false ;;
+esac
+export WP_AUTO_INSTALL="${WP_AUTO_INSTALL-false}"
 exec /docker-entrypoint.sh "$@"

@@ -23,14 +23,35 @@ jobs:
       - name: Worker wake behavior
         run: python3 -m unittest discover -s tests -p 'test_*.py'
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4'
+
+      - name: Realtime server and mu-plugin against Redis
+        env:
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: '6379'
+          REDIS_PASSWORD: ci-redis
+        run: |
+          docker run -d --rm --name ci-redis -p 6379:6379 redis:8.8-alpine redis-server --requirepass ci-redis --save ''
+          for i in $(seq 1 20); do docker exec ci-redis redis-cli -a ci-redis ping 2>/dev/null | grep -q PONG && break; sleep 0.5; done
+          php -l config/wordpress/flx-realtime.php
+          bun test images/realtime
+          php tests/realtime.php
+          docker stop ci-redis
+
       - name: Compose files are valid
         run: |
           for dir in compose/*/; do
             cp "$dir/.env.example" "$dir/.env"
-            sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci/' "$dir/.env"
+            sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci/;s/^WPAPI_KEY=$/WPAPI_KEY=ci/' "$dir/.env"
             (cd "$dir" && docker compose config -q) && echo "ok $dir"
             rm "$dir/.env"
           done
+          cp .env.example .env
+          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci/' .env
+          docker compose -f docker-compose.local.yml config -q && echo "ok docker-compose.local.yml"
+          rm .env
           for f in docker-compose.yml coolify/*/docker-compose.yml coolify-template/*.yaml; do
             python3 -c "import sys, yaml; yaml.safe_load(open(sys.argv[1]))" "$f" && echo "ok $f"
           done
@@ -59,7 +80,7 @@ jobs:
       - name: Start
         run: |
           cp .env.example .env
-          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-db/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci-root/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci-redis/;s/^WP_ADMIN_EMAIL=$/WP_ADMIN_EMAIL=ci@example.com/;s/^WP_ADMIN_PASSWORD=$/WP_ADMIN_PASSWORD=ci-admin/' .env
+          sed -i 's/^DB_PASSWORD=$/DB_PASSWORD=ci-db/;s/^DB_ROOT_PASSWORD=$/DB_ROOT_PASSWORD=ci-root/;s/^REDIS_PASSWORD=$/REDIS_PASSWORD=ci-redis/;s/^WP_ADMIN_EMAIL=$/WP_ADMIN_EMAIL=ci@example.com/;s/^WP_ADMIN_PASSWORD=$/WP_ADMIN_PASSWORD=ci-admin/;s/^WP_AUTO_INSTALL=false$/WP_AUTO_INSTALL=true/;s/^FLX_REALTIME_SECRET=$/FLX_REALTIME_SECRET=ci-realtime-secret-0123456789abcdef0123/' .env
           docker compose up -d --wait --wait-timeout 300
       - name: Installed and serving
         run: |
@@ -89,6 +110,14 @@ jobs:
               sleep 5
             done
             docker compose exec -T worker wp redis status | grep -Eqi '^Status:[[:space:]]+Connected'
+          fi
+      - name: Realtime (stacks with Redis)
+        run: |
+          grep -q '^FLX_REALTIME_SECRET=' .env || exit 0
+          docker compose exec -T worker wp flx realtime test
+          if grep -q '^FLX_REALTIME_URL=/flx-rt' .env; then
+            # nginx-fpm: the WebSocket path is served through nginx.
+            test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/flx-rt)" = 426
           fi
       - name: Logs
         if: always()

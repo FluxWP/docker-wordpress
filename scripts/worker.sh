@@ -1,6 +1,6 @@
 #!/bin/sh
-# FluxWP docker-wordpress - worker container.
-# Runtime revision: 2026.11.10.2
+# FluxWP Docker - worker container.
+# Runtime revision: 2026.11.20.2
 #
 # 1. Waits for the WordPress files and the database.
 # 2. One-time bootstrap (idempotent, safe on every restart):
@@ -15,7 +15,11 @@
 #      - enables the Redis object cache when WP_REDIS_HOST is set,
 #      - Flux Setup (FLUXWP_SETUP, default true): downloaded before the install screen,
 #        activated on install, its wizard opens on the first wp-admin visit.
-# 3. Runs due cron on shared-volume wake signals (poll 2s), with a 60s fallback.
+#      - FluxWP Realtime mu-plugin when FLX_REALTIME_SECRET is set (removed when it is not).
+# 3. Site address follows WP_URL (WP_URL_SYNC, default true): when the domain changes in
+#    Coolify, the worker updates home/siteurl and replaces the old address in the database
+#    (serialized-safe, guid column skipped), once per change.
+# 4. Runs due cron on shared-volume wake signals (poll 2s), with a 60s fallback.
 #
 # Installed in the image as /usr/local/bin/flx-worker; runs in the wordpress:cli image as www-data (33).
 
@@ -67,17 +71,17 @@ install_core() {
 	if wp core is-installed >/dev/null 2>&1; then
 		return 0
 	fi
-	# WP_AUTO_INSTALL defaults to true: install without WP_ADMIN_EMAIL,
+	# WP_AUTO_INSTALL=true: install without WP_ADMIN_EMAIL,
 	# admin e-mail falls back to admin@<site host>.
-	if [ -z "${WP_ADMIN_EMAIL:-}" ] && [ -n "${WP_URL:-}" ] && truthy "${WP_AUTO_INSTALL:-true}"; then
+	if [ -z "${WP_ADMIN_EMAIL:-}" ] && [ -n "${WP_URL:-}" ] && truthy "${WP_AUTO_INSTALL:-false}"; then
 		host="$(echo "$WP_URL" | sed -E 's#^[a-zA-Z]+://##; s#[/:].*$##')"
 		WP_ADMIN_EMAIL="admin@${host:-example.com}"
 	fi
 	if [ -z "${WP_URL:-}" ] || [ -z "${WP_ADMIN_EMAIL:-}" ]; then
 		if [ -z "${FLX_WARNED:-}" ]; then
 			log "WordPress is not installed. The install screen is closed."
-			log "Leave WP_AUTO_INSTALL=true (default) or set WP_ADMIN_EMAIL to install from this worker,"
-			log "or set WP_INSTALL_TOKEN to open /wp-admin/install.php in the browser."
+			log "Open the site to use the WordPress install screen, or set WP_AUTO_INSTALL=true / WP_ADMIN_EMAIL to install from this worker,"
+			log "(with WP_AUTO_INSTALL=true the install screen needs WP_INSTALL_TOKEN)."
 			FLX_WARNED=1
 		fi
 		return 1
@@ -182,7 +186,12 @@ MU_DST="$ROOT/wp-content/mu-plugins/flx-docker.php"
 # activates it on install and opens its wizard on the first wp-admin visit.
 prepare_fluxwp() {
 	if ! truthy "${FLUXWP_SETUP:-true}"; then
-		[ -f "$MU_DST" ] && rm -f "$MU_DST"
+		# The mu-plugin also wires WordPress to the wpapi container (WPAPI_KEY), so it stays then.
+		if [ -n "${WPAPI_KEY:-}" ] && [ -f "$MU_SRC" ]; then
+			cmp -s "$MU_SRC" "$MU_DST" 2>/dev/null || { mkdir -p "$ROOT/wp-content/mu-plugins" && cp "$MU_SRC" "$MU_DST" || log "mu-plugin could not be written"; }
+		else
+			[ -f "$MU_DST" ] && rm -f "$MU_DST"
+		fi
 		return 0
 	fi
 	if [ -f "$MU_SRC" ] && ! cmp -s "$MU_SRC" "$MU_DST" 2>/dev/null; then
@@ -223,6 +232,54 @@ bootstrap() {
 	return $rc
 }
 
+# --- Site address follows WP_URL --------------------------------------------
+# Coolify (SERVICE_URL_*) or the .env file says where the site lives. When that differs
+# from what the database holds, wp-cli replaces the old address (serialized-safe, guid
+# untouched). The last applied address is stored in the flx_docker_url option, so this
+# runs once per change and a manual change in wp-admin is not undone on every restart.
+url_origin() { printf '%s' "$1" | sed -E 's#^(https?://[^/]+).*#\1#'; }
+
+sync_site_url() {
+	truthy "${WP_URL_SYNC:-true}" || return 0
+	new="$(printf '%s' "${WP_URL:-}" | sed 's#/*$##')"
+	case "$new" in http://?*|https://?*) ;; *) return 0 ;; esac
+	if [ "$(url_origin "$new")" != "$new" ]; then
+		log "WP_URL has a path; the site address is not synced automatically"
+		return 0
+	fi
+	seen="$(wp option get flx_docker_url 2>/dev/null || true)"
+	[ "$seen" = "$new" ] && return 0
+	cur_site="$(wp option get siteurl 2>/dev/null | sed 's#/*$##')"
+	cur_home="$(wp option get home 2>/dev/null | sed 's#/*$##')"
+	[ -n "$cur_site" ] || return 1
+	[ -n "$cur_home" ] || cur_home="$cur_site"
+	osite="$(url_origin "$cur_site")"
+	ohome="$(url_origin "$cur_home")"
+	if [ "$osite" != "$new" ] || [ "$ohome" != "$new" ]; then
+		log "site address changed: $cur_site -> $new"
+		for old in "$osite" "$ohome"; do
+			[ "$old" = "$new" ] && continue
+			case "${done_old:-}" in *" $old "*) continue ;; esac
+			done_old="${done_old:-} $old "
+			log "replacing $old with $new in the database"
+			wp search-replace "$old" "$new" --all-tables --skip-columns=guid --report-changed-only >/dev/null || return 1
+			# JSON-escaped copies (block content, Flux settings).
+			oesc="$(printf '%s' "$old" | sed 's#/#\\/#g')"
+			nesc="$(printf '%s' "$new" | sed 's#/#\\/#g')"
+			wp search-replace "$oesc" "$nesc" --all-tables --skip-columns=guid --report-changed-only >/dev/null || return 1
+		done
+		done_old=""
+		wp cache flush >/dev/null 2>&1 || true
+		for c in WP_HOME WP_SITEURL; do
+			if wp config has "$c" >/dev/null 2>&1; then
+				log "warning: $c is defined in wp-config.php and overrides the database; remove or update it"
+			fi
+		done
+		log "site address is now $new"
+	fi
+	wp option update flx_docker_url "$new" --autoload=no >/dev/null || return 1
+}
+
 run_cron() {
 	[ "${WP_CRON_MODE:-worker}" = "worker" ] || return 0
 	wp core is-installed >/dev/null 2>&1 || return 0
@@ -255,12 +312,26 @@ wait_for_work() {
 	done
 }
 
+# FluxWP Realtime (realtime service): mu-plugin present exactly when the shared secret is set.
+RT_SRC=/usr/local/etc/flux/flx-realtime.php
+RT_DST="$ROOT/wp-content/mu-plugins/flx-realtime.php"
+sync_realtime() {
+	if [ -n "${FLX_REALTIME_SECRET:-}" ] && [ -f "$RT_SRC" ]; then
+		cmp -s "$RT_SRC" "$RT_DST" 2>/dev/null && return 0
+		mkdir -p "$ROOT/wp-content/mu-plugins" && cp "$RT_SRC" "$RT_DST" && log "realtime mu-plugin installed" || log "realtime mu-plugin could not be written"
+	elif [ -f "$RT_DST" ]; then
+		rm -f "$RT_DST" && log "realtime mu-plugin removed (FLX_REALTIME_SECRET not set)"
+	fi
+}
+
 wait_files
 wait_db
+sync_realtime
 log "ready (cron every ${INTERVAL}s)"
 
 # Bootstrap until it succeeds; give up after 30 tries (~30 min) and only run cron.
 tries=0
+url_sync=0
 while :; do
 	if [ "$tries" -ge 0 ]; then
 		wp core is-installed >/dev/null 2>&1 || prepare_fluxwp
@@ -276,6 +347,10 @@ while :; do
 				tries=-1
 			fi
 		fi
+	fi
+	# Once per worker start (a redeploy restarts it): follow a changed domain.
+	if [ "$url_sync" -lt 5 ] && wp core is-installed >/dev/null 2>&1; then
+		if sync_site_url; then url_sync=5; else url_sync=$((url_sync + 1)); log "site address sync failed, will retry"; fi
 	fi
 	run_cron
 	wait_for_work
