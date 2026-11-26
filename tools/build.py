@@ -26,6 +26,8 @@ BUILDS = {
     "7.1-php8.4-fpm": ("images/wordpress/Dockerfile", "wordpress:7.1-php8.4-fpm"),
     "worker-php8.4": ("images/worker/Dockerfile", "wordpress:cli-2.12-php8.4"),
     "nginx-1.30": ("images/nginx/Dockerfile", "nginx:1.30-alpine"),
+    "wpapi-node22": ("images/wpapi/Dockerfile", "node:22-alpine"),
+    "realtime-bun1.4": ("images/realtime/Dockerfile", "oven/bun:1.4-alpine"),
 }
 
 IMAGES = {
@@ -33,6 +35,8 @@ IMAGES = {
     "wordpress-fpm": f"{REGISTRY}:7.1-php8.4-fpm",
     "worker": f"{REGISTRY}:worker-php8.4",
     "nginx": f"{REGISTRY}:nginx-1.30",
+    "wpapi": f"{REGISTRY}:wpapi-node22",
+    "realtime": f"{REGISTRY}:realtime-bun1.4",
     "mariadb": "mariadb:11.8",
     "mysql": "mysql:8.4",
     "redis": "redis:8.8-alpine",
@@ -55,35 +59,45 @@ VARIANTS = {
         "title": "WordPress PHP-FPM + nginx + MariaDB + Redis object cache",
         "db": "mariadb", "redis": True, "web": "nginx",
     },
+    "wpapi": {
+        "title": "WordPress + MariaDB + Redis + WhatsApp API (flx-wpapi)",
+        "db": "mariadb", "redis": True, "web": "apache", "wpapi": True,
+    },
 }
 
 DEFAULT = "mariadb-redis"
 
-# Per-mode values. Coolify generates SERVICE_* secrets itself.
+# Per-mode values. These are env-var references (${...}), never secrets;
+# Coolify generates SERVICE_* secrets itself.
 MODES = {
     "coolify": {
         "db_user": "$SERVICE_USER_WORDPRESS",
-        "db_password": "$SERVICE_PASSWORD_WORDPRESS",
-        "db_root_password": "$SERVICE_PASSWORD_ROOT",
+        "db_pw_ref": "$SERVICE_PASSWORD_WORDPRESS",
+        "db_root_pw_ref": "$SERVICE_PASSWORD_ROOT",
         "db_name": "${DB_NAME:-wordpress}",
-        "redis_password": "$SERVICE_PASSWORD_REDIS",
+        "redis_pw_ref": "$SERVICE_PASSWORD_REDIS",
+        "wpapi_link_ref": "$SERVICE_PASSWORD_64_WPAPIKEY",
+        "realtime_secret_ref": "$SERVICE_PASSWORD_64_REALTIME",
         "wp_url": "$SERVICE_URL_WORDPRESS",
         "wp_admin_user": "${WP_ADMIN_USER:-}",
-        "wp_admin_password": "${WP_ADMIN_PASSWORD:-}",
+        "wp_admin_pw_ref": "${WP_ADMIN_PASSWORD:-}",
         "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
-        "wp_auto_install": "${WP_AUTO_INSTALL:-true}",
+        "wp_auto_install": "${WP_AUTO_INSTALL:-false}",
     },
     "compose": {
         "db_user": "${DB_USER:-wordpress}",
-        "db_password": "${DB_PASSWORD:?set DB_PASSWORD in .env}",
-        "db_root_password": "${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}",
+        "db_pw_ref": "${DB_PASSWORD:?set DB_PASSWORD in .env}",
+        "db_root_pw_ref": "${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}",
         "db_name": "${DB_NAME:-wordpress}",
-        "redis_password": "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}",
+        "redis_pw_ref": "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}",
+        "wpapi_link_ref": "${WPAPI_KEY:?set WPAPI_KEY in .env}",
+        # Optional: empty keeps the realtime service idle and every client polling.
+        "realtime_secret_ref": "${FLX_REALTIME_SECRET:-}",
         "wp_url": "${WP_URL:-}",
         "wp_admin_user": "${WP_ADMIN_USER:-admin}",
-        "wp_admin_password": "${WP_ADMIN_PASSWORD:-}",
+        "wp_admin_pw_ref": "${WP_ADMIN_PASSWORD:-}",
         "wp_admin_email": "${WP_ADMIN_EMAIL:-}",
-        "wp_auto_install": "${WP_AUTO_INSTALL:-true}",
+        "wp_auto_install": "${WP_AUTO_INSTALL:-false}",
     },
 }
 
@@ -92,13 +106,23 @@ def env(lines, indent=6):
     return "".join(f"{pad}- {line}\n" for line in lines)
 
 
+def realtime_url(mode, v):
+    """Public WebSocket path WordPress hands to clients. Coolify routes /flx-rt itself (Apache stacks) or
+    through nginx; plain Docker with Apache has no proxy rule for it, so it stays off until one is set."""
+    if mode == "coolify":
+        return "/flx-rt"
+    if v["web"] == "nginx":
+        return "${FLX_REALTIME_URL:-/flx-rt}"
+    return "${FLX_REALTIME_URL:-}"
+
+
 def wp_env(mode, v):
     m = MODES[mode]
     db_host = v["db"]
     lines = [
         f"WORDPRESS_DB_HOST={db_host}",
         f"WORDPRESS_DB_USER={m['db_user']}",
-        f"WORDPRESS_DB_PASSWORD={m['db_password']}",
+        f"WORDPRESS_DB_PASSWORD={m['db_pw_ref']}",
         f"WORDPRESS_DB_NAME={m['db_name']}",
         "WORDPRESS_TABLE_PREFIX=${WORDPRESS_TABLE_PREFIX:-wp_}",
         "PHP_MEMORY_LIMIT=${PHP_MEMORY_LIMIT:-256M}",
@@ -112,14 +136,25 @@ def wp_env(mode, v):
     if v["redis"]:
         lines += [
             "WP_REDIS_HOST=redis",
-            f"WP_REDIS_PASSWORD={m['redis_password']}",
+            f"WP_REDIS_PASSWORD={m['redis_pw_ref']}",
+        ]
+    if v["redis"]:
+        lines += [
+            f"FLX_REALTIME_SECRET={m['realtime_secret_ref']}",
+            f"FLX_REALTIME_URL={realtime_url(mode, v)}",
+        ]
+    if v.get("wpapi"):
+        lines += [
+            "WPAPI_URL=http://wpapi:3000",
+            f"WPAPI_KEY={m['wpapi_link_ref']}",
+            "WPAPI_INSTANCE=${WPAPI_INSTANCE:-main}",
         ]
     return lines
 
 
 def header(mode, name, v):
     lines = [
-        f"# FluxWP docker-wordpress: {v['title']}",
+        f"# FluxWP Docker: {v['title']}",
         "# https://github.com/FluxWP/docker-wordpress",
         "#",
     ]
@@ -127,12 +162,12 @@ def header(mode, name, v):
         lines += [
             "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
             "# Coolify generates a domain for the '" + ("nginx" if v["web"] == "nginx" else "wordpress") + "' service; put your own there if you like, then Deploy.",
-            "# The worker installs WordPress on first start (WP_AUTO_INSTALL defaults to true).",
-            "# A generated admin password is not logged. Read it from the worker:",
+            "# Open the domain: WordPress's own install screen asks for language, site name and admin. Flux Setup's wizard opens after.",
+            "# WP_AUTO_INSTALL=true installs unattended from the worker instead (generated password, not logged):",
             "#   docker compose exec worker cat /run/flx-private/admin-password",
-            "# Change the password after the first login, then delete the file:",
+            "# Then change the password after the first login and delete the file:",
             "#   docker compose exec worker rm /run/flx-private/admin-password",
-            "# install.php and setup-config.php stay closed unless WP_INSTALL_TOKEN is set.",
+            "# With WP_AUTO_INSTALL=true install.php and setup-config.php stay closed unless WP_INSTALL_TOKEN is set.",
             "# Unset WP_INSTALL_TOKEN after the install is finished; a token in the query string can end up in the Apache access log.",
             "# Optional: WP_ADMIN_USER, WP_ADMIN_PASSWORD, WP_ADMIN_EMAIL.",
             "# Flux Setup comes installed; its wizard opens after install. FLUXWP_SETUP=false leaves it out.",
@@ -140,6 +175,7 @@ def header(mode, name, v):
     else:
         lines += [
             "# Usage: cp .env.example .env  (set passwords)  &&  docker compose up -d",
+            "# Coolify: do NOT use this file (no domain, no generated secrets). Use coolify/" + name + "/docker-compose.yml.",
         ]
     lines.append("# Generated by tools/build.py - edit that, not this file.")
     return "\n".join(lines) + "\n\n"
@@ -166,10 +202,10 @@ def db_service(mode, v):
             "      - 'mariadb-data:/var/lib/mysql'\n"
             "    environment:\n"
             + env([
-                f"MARIADB_ROOT_PASSWORD={m['db_root_password']}",
+                f"MARIADB_ROOT_PASSWORD={m['db_root_pw_ref']}",
                 f"MARIADB_DATABASE={m['db_name']}",
                 f"MARIADB_USER={m['db_user']}",
-                f"MARIADB_PASSWORD={m['db_password']}",
+                f"MARIADB_PASSWORD={m['db_pw_ref']}",
                 "MARIADB_AUTO_UPGRADE=1",
             ])
             + "    healthcheck:\n"
@@ -198,10 +234,10 @@ def db_service(mode, v):
         "      - 'mysql-data:/var/lib/mysql'\n"
         "    environment:\n"
         + env([
-            f"MYSQL_ROOT_PASSWORD={m['db_root_password']}",
+            f"MYSQL_ROOT_PASSWORD={m['db_root_pw_ref']}",
             f"MYSQL_DATABASE={m['db_name']}",
             f"MYSQL_USER={m['db_user']}",
-            f"MYSQL_PASSWORD={m['db_password']}",
+            f"MYSQL_PASSWORD={m['db_pw_ref']}",
         ])
         + "    healthcheck:\n"
         "      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent']\n"
@@ -232,9 +268,9 @@ def redis_service(mode):
         "      - --appendonly\n"
         "      - 'no'\n"
         "      - --requirepass\n"
-        f"      - {m['redis_password']}\n"
+        f"      - {m['redis_pw_ref']}\n"
         "    environment:\n"
-        + env([f"REDISCLI_AUTH={m['redis_password']}"])
+        + env([f"REDISCLI_AUTH={m['redis_pw_ref']}"])
         + "    healthcheck:\n"
         "      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG']\n"
         "      interval: 10s\n"
@@ -243,6 +279,86 @@ def redis_service(mode):
         "    security_opt:\n"
         "      - no-new-privileges:true\n"
     )
+
+
+def wpapi_service(mode, v):
+    m = MODES[mode]
+    return (
+        "  # WhatsApp API (flx-wpapi, Evolution API v2 compatible). Internal only: no published port.\n"
+        "  # WordPress reaches it at http://wpapi:3000 with the shared key (WPAPI_KEY).\n"
+        "  wpapi:\n"
+        f"    image: '{IMAGES['wpapi']}'\n"
+        "    restart: unless-stopped\n"
+        "    volumes:\n"
+        "      - 'wpapi-data:/data'\n"
+        "    environment:\n"
+        + env([
+            f"FLXW_API_KEY={m['wpapi_link_ref']}",
+            "FLXW_DB_HOST=mariadb",
+            f"FLXW_DB_USER={m['db_user']}",
+            f"FLXW_DB_PASSWORD={m['db_pw_ref']}",
+            f"FLXW_DB_NAME={m['db_name']}",
+            "FLXW_DATA_DIR=/data",
+            "FLXW_PUBLIC_URL=http://wpapi:3000",
+            "FLXW_ALLOW_PRIVATE_URLS=1",
+            "FLXW_PANEL=${WPAPI_PANEL:-off}",
+            "FLXW_MSG_KEEP_DAYS=${WPAPI_MSG_KEEP_DAYS:-45}",
+        ])
+        + "    depends_on:\n"
+        "      mariadb:\n"
+        "        condition: service_healthy\n"
+        "    healthcheck:\n"
+        "      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:3000/health']\n"
+        "      interval: 15s\n"
+        "      timeout: 5s\n"
+        "      retries: 10\n"
+        "      start_period: 20s\n"
+        "    security_opt:\n"
+        "      - no-new-privileges:true\n"
+    )
+
+
+def realtime_service(mode, v):
+    m = MODES[mode]
+    out = (
+        "  # FluxWP Realtime: WebSocket live updates for the panel and FluxApp (signals from WordPress over Redis).\n"
+        "  # Optional: if it is down or removed, clients poll as before. Path /flx-rt on the site's own domain.\n"
+    )
+    if mode == "coolify" and v["web"] == "apache":
+        out += "  # Coolify serves it on the WordPress domain at /flx-rt. Changed the domain? Set this service's domain to <domain>/flx-rt.\n"
+    out += (
+        "  realtime:\n"
+        f"    image: '{IMAGES['realtime']}'\n"
+        "    restart: unless-stopped\n"
+        "    environment:\n"
+    )
+    lines = []
+    if mode == "coolify" and v["web"] == "apache":
+        lines.append("SERVICE_URL_WORDPRESS=/flx-rt")
+    lines += [
+        "REDIS_HOST=redis",
+        f"REDIS_PASSWORD={m['redis_pw_ref']}",
+        f"FLX_REALTIME_SECRET={m['realtime_secret_ref']}",
+        "RT_MAX_CONN=${RT_MAX_CONN:-500}",
+        "RT_PER_USER=${RT_PER_USER:-10}",
+    ]
+    out += env(lines)
+    if mode == "compose" and v["web"] == "apache":
+        out += "    ports:\n      - '127.0.0.1:${REALTIME_PORT:-8081}:80'\n"
+    out += (
+        "    depends_on:\n"
+        "      redis:\n"
+        "        condition: service_healthy\n"
+        "    healthcheck:\n"
+        "      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/healthz']\n"
+        "      interval: 15s\n"
+        "      timeout: 5s\n"
+        "      retries: 10\n"
+        "      start_period: 10s\n"
+        "    security_opt:\n"
+        "      - no-new-privileges:true\n"
+    )
+    return out
 
 
 def depends(v, extra=()):
@@ -272,6 +388,7 @@ def wordpress_service(mode, v):
     if apache:
         lines.append("APACHE_MAX_WORKERS=${APACHE_MAX_WORKERS:-20}")
         lines.append("WP_INSTALL_TOKEN=${WP_INSTALL_TOKEN:-}")
+        lines.append("WP_AUTO_INSTALL=" + MODES[mode]["wp_auto_install"])
     else:
         lines.append("PHP_FPM_MAX_CHILDREN=${PHP_FPM_MAX_CHILDREN:-10}")
     out += env(lines)
@@ -307,7 +424,7 @@ def nginx_service(mode):
         "    volumes:\n"
         "      - 'wordpress-files:/var/www/html:ro'\n"
     )
-    env_lines = ["WP_INSTALL_TOKEN=${WP_INSTALL_TOKEN:-}"]
+    env_lines = ["WP_INSTALL_TOKEN=${WP_INSTALL_TOKEN:-}", "WP_AUTO_INSTALL=" + MODES[mode]["wp_auto_install"]]
     if mode == "coolify":
         env_lines.insert(0, "SERVICE_URL_NGINX")
     out += "    environment:\n" + env(env_lines)
@@ -342,7 +459,7 @@ def worker_service(mode, v):
             f"WP_URL={m['wp_url'].replace('WORDPRESS', 'NGINX') if v['web'] == 'nginx' else m['wp_url']}",
             "WP_TITLE=${WP_TITLE:-WordPress}",
             f"WP_ADMIN_USER={m['wp_admin_user']}",
-            f"WP_ADMIN_PASSWORD={m['wp_admin_password']}",
+            f"WP_ADMIN_PASSWORD={m['wp_admin_pw_ref']}",
             f"WP_ADMIN_EMAIL={m['wp_admin_email']}",
             f"WP_AUTO_INSTALL={m['wp_auto_install']}",
             "WP_LOCALE=${WP_LOCALE:-en_US}",
@@ -370,17 +487,22 @@ def build(mode, name, v):
     if v["web"] == "nginx":
         out += nginx_service(mode)
     out += worker_service(mode, v)
+    if v.get("wpapi"):
+        out += wpapi_service(mode, v)
     out += db_service(mode, v)
     if v["redis"]:
         out += redis_service(mode)
+        out += realtime_service(mode, v)
     out += "\nvolumes:\n  wordpress-files:\n  flx-private:\n"
     out += f"  {v['db']}-data:\n"
+    if v.get("wpapi"):
+        out += "  wpapi-data:\n"
     return out
 
 
 def env_example(name, v):
     lines = [
-        f"# FluxWP docker-wordpress: {v['title']}",
+        f"# FluxWP Docker: {v['title']}",
         "# Copy to .env and fill in. Generate passwords with: openssl rand -base64 24",
         "",
         "# Port on the host (put a reverse proxy with HTTPS in front for production).",
@@ -396,6 +518,21 @@ def env_example(name, v):
     ]
     if v["redis"]:
         lines += ["", "# Redis object cache", "REDIS_PASSWORD=", "REDIS_MAXMEMORY=128mb"]
+        lines += [
+            "",
+            "# FluxWP Realtime (optional): live updates for the panel and FluxApp over WebSocket.",
+            "# Empty secret: the realtime service stays idle and clients poll. Generate: openssl rand -hex 32",
+            "FLX_REALTIME_SECRET=",
+        ]
+        if v["web"] == "nginx":
+            lines += ["# nginx serves it at /flx-rt on this site."]
+        else:
+            lines += [
+                "# Browsers reach it only through your reverse proxy: route /flx-rt (WebSocket) to",
+                "# 127.0.0.1:REALTIME_PORT, then set FLX_REALTIME_URL=/flx-rt. Empty: publishing works, clients poll.",
+                "REALTIME_PORT=8081",
+            ]
+        lines += ["FLX_REALTIME_URL=" + ("/flx-rt" if v["web"] == "nginx" else ""), "RT_MAX_CONN=500", "RT_PER_USER=10"]
     lines += [
         "",
         "# WordPress installs itself on first start. Empty WP_ADMIN_EMAIL becomes admin@<host>.",
@@ -403,15 +540,16 @@ def env_example(name, v):
         "#   docker compose exec worker cat /run/flx-private/admin-password",
         "# Change the password after the first login, then delete the file:",
         "#   docker compose exec worker rm /run/flx-private/admin-password",
-        "# WP_AUTO_INSTALL=false skips that. The install screen stays closed unless",
-        "# WP_INSTALL_TOKEN is alphanumeric (openssl rand -hex 24).",
+        "# Default WP_AUTO_INSTALL=false: open the site and use WordPress's own install screen (language, site name,",
+        "# admin). WP_AUTO_INSTALL=true installs from the worker instead and closes the screen unless",
+        "# WP_INSTALL_TOKEN is set (alphanumeric, openssl rand -hex 24).",
         "# Unset WP_INSTALL_TOKEN after the install is finished; a token in the query string can end up in the Apache access log.",
         "WP_URL=http://localhost:8080",
         "WP_TITLE=WordPress",
         "WP_ADMIN_USER=admin",
         "WP_ADMIN_PASSWORD=",
         "WP_ADMIN_EMAIL=",
-        "WP_AUTO_INSTALL=true",
+        "WP_AUTO_INSTALL=false",
         "WP_INSTALL_TOKEN=",
         "WP_LOCALE=en_US",
         "WP_TIMEZONE=UTC",
@@ -431,6 +569,19 @@ def env_example(name, v):
         "PHP_OPCACHE_MEMORY=256",
         "PHP_TIMEZONE=UTC",
     ]
+    if v.get("wpapi"):
+        lines += [
+            "",
+            "# WhatsApp API (flx-wpapi). One shared key: the wpapi container reads it as FLXW_API_KEY,",
+            "# WordPress gets a ready WhatsApp connection with it (Flux Mail, type Flux WPAPI). Generate: openssl rand -hex 32",
+            "WPAPI_KEY=",
+            "# Name of the first WhatsApp account (the number you pair with the QR).",
+            "WPAPI_INSTANCE=main",
+            "# Days of message history to keep (1-3650).",
+            "WPAPI_MSG_KEEP_DAYS=45",
+            "# on: fallback panel at the wpapi container (not published by default; needs a port or a proxy).",
+            "WPAPI_PANEL=off",
+        ]
     if v["web"] == "apache":
         lines += ["# Apache processes (each ~64 MB RAM).", "APACHE_MAX_WORKERS=20"]
     else:
@@ -475,7 +626,18 @@ def outputs():
         "# Coolify: Projects > Add Resource > Docker Compose Empty > paste this file > Save.",
         "# Default stack (same as coolify/" + DEFAULT + "). Coolify: add this repository as a resource\n"
         "# (Docker Compose build pack, default location /docker-compose.yml), or paste this file into\n"
-        "# Docker Compose Empty. Plain Docker: use compose/" + DEFAULT + "/ instead.",
+        "# Docker Compose Empty. Plain Docker: docker-compose.local.yml here, or compose/" + DEFAULT + "/.",
+    )
+    # Plain Docker next to it, so a local copy runs from here too:
+    #   cp .env.example .env && docker compose -f docker-compose.local.yml up -d
+    files["docker-compose.local.yml"] = build("compose", DEFAULT, VARIANTS[DEFAULT]).replace(
+        "# Usage: cp .env.example .env  (set passwords)  &&  docker compose up -d",
+        "# Local / plain Docker, default stack (same as compose/" + DEFAULT + ").\n"
+        "# Usage: cp .env.example .env  (set passwords)  &&  docker compose -f docker-compose.local.yml up -d",
+    ).replace("\nservices:\n", "\nname: fluxwp\n\nservices:\n", 1)
+    files[".env.example"] = env_example(DEFAULT, VARIANTS[DEFAULT]).replace(
+        "# Copy to .env and fill in.",
+        "# For docker-compose.local.yml. Copy to .env and fill in.",
     )
     for name, v in VARIANTS.items():
         files[f"coolify/{name}/docker-compose.yml"] = build("coolify", name, v)

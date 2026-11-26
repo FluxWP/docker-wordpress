@@ -1,6 +1,6 @@
 <?php
 /**
- * FluxWP docker-wordpress - extra wp-config settings.
+ * FluxWP Docker - extra wp-config settings.
  *
  * Installed in the image as /usr/local/etc/flux/wp-config-extra.php (outside the web root) and
  * loaded from wp-config.php through WORDPRESS_CONFIG_EXTRA. Driven by the

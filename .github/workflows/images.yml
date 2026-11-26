@@ -1,6 +1,7 @@
 name: Images
 
 # Builds ghcr.io/fluxwp/wordpress:<tag> for amd64 + arm64.
+# Sources live in this repository.
 # Daily rebuild picks up security fixes in the upstream images (PHP, Debian, Alpine).
 
 on:

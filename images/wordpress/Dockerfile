@@ -7,6 +7,18 @@ FROM ${BASE}
 COPY --chmod=755 images/min-php.sh /usr/local/bin/flx-min-php
 RUN /usr/local/bin/flx-min-php
 
+# PhpRedis (built with igbinary) for the Redis object cache; Flux Redis picks it up on its own.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends $PHPIZE_DEPS; \
+    pecl install igbinary; \
+    docker-php-ext-enable igbinary; \
+    pecl install --configureoptions 'enable-redis-igbinary="yes" enable-redis-lzf="no" enable-redis-zstd="no" enable-redis-msgpack="no" enable-redis-lz4="no"' redis; \
+    docker-php-ext-enable --ini-name zz-redis.ini redis; \
+    apt-get purge -y --auto-remove $PHPIZE_DEPS; \
+    rm -rf /var/lib/apt/lists/* /tmp/pear; \
+    php -r 'exit(extension_loaded("redis") && extension_loaded("igbinary") && defined("Redis::SERIALIZER_IGBINARY") ? 0 : 1);'
+
 COPY config/php/zz-flux.ini /usr/local/etc/php/conf.d/zz-flux.ini
 COPY config/wordpress/wp-config-extra.php /usr/local/etc/flux/wp-config-extra.php
 COPY config/apache/zz-flux.conf /usr/local/share/flux/apache.conf
