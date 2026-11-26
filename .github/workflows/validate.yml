@@ -69,6 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build images from this commit
+        working-directory: .
         run: |
           python3 tools/build.py --matrix | python3 -c '
           import json, subprocess, sys
